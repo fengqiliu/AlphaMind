@@ -42,12 +42,12 @@ export function StockSearch({
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!query.trim()) {
-      setResults([]);
+      debounceRef.current = setTimeout(() => setResults([]), 0);
       return;
     }
 
-    setIsLoading(true);
     debounceRef.current = setTimeout(async () => {
+      setIsLoading(true);
       try {
         const data = await searchStocks(query);
         setResults(data);

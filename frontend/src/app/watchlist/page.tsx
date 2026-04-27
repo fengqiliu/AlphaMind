@@ -21,11 +21,20 @@ export default function WatchlistPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setIsLoading(true);
-    getWatchlist()
-      .then(setItems)
-      .catch(() => setError("加载自选股失败"))
-      .finally(() => setIsLoading(false));
+    let cancelled = false;
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        const data = await getWatchlist();
+        if (!cancelled) setItems(data);
+      } catch {
+        if (!cancelled) setError("加载自选股失败");
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+    load();
+    return () => { cancelled = true; };
   }, []);
 
   const handleAddStock = async (stock: StockSearchResult) => {

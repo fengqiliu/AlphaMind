@@ -60,7 +60,6 @@ export default function AnalysisPage() {
       es.addEventListener(type, (e: MessageEvent) => {
         try {
           const data = JSON.parse(e.data);
-          // 确保 event 字段正确（有些后端直接在 data 中携带 event，也可能需要合并）
           handleSSEEvent({ event: type as "stage" | "data" | "complete" | "error", ...data });
           if (type === "complete" || type === "error") {
             es.close();
@@ -71,6 +70,25 @@ export default function AnalysisPage() {
           // ignore parse errors
         }
       });
+    });
+
+    // 监听最终完整分析报告（result 事件携带完整 AnalysisReportDTO）
+    es.addEventListener("result", (e: MessageEvent) => {
+      try {
+        const payload = JSON.parse(e.data);
+        const report = payload?.data;
+        if (report) {
+          if (report.marketData) setMarketData(report.marketData);
+          if (report.technicalIndicators) setTechnicalIndicators(report.technicalIndicators);
+          if (report.tradeSignal) setFinalSignal(report.tradeSignal);
+          if (report.judgment) setJudgment(report.judgment);
+        }
+        setIsAnalyzing(false);
+        es.close();
+        eventSourceRef.current = null;
+      } catch {
+        // ignore parse errors
+      }
     });
 
     es.onerror = () => {
@@ -307,42 +325,24 @@ export default function AnalysisPage() {
             K线走势
           </h2>
           <div className="chart-container rounded-xl overflow-hidden">
-            <KLineChart
-              data={{
-                dates: [
-                  "2026-04-01",
-                  "2026-04-02",
-                  "2026-04-03",
-                  "2026-04-04",
-                  "2026-04-07",
-                  "2026-04-08",
-                  "2026-04-09",
-                  "2026-04-10",
-                  "2026-04-11",
-                  "2026-04-14",
-                ],
-                klines: [
-                  [100, 102, 99, 103],
-                  [103, 105, 102, 106],
-                  [106, 104, 103, 107],
-                  [107, 108, 106, 109],
-                  [109, 110, 108, 111],
-                  [111, 109, 108, 112],
-                  [112, 115, 111, 116],
-                  [116, 114, 113, 117],
-                  [117, 118, 116, 119],
-                  [119, 120, 118, 121],
-                ] as [number, number, number, number][],
-                volumes: [
-                  1000, 1200, 1100, 1300, 1400, 1200, 1500, 1400, 1600, 1700,
-                ],
-                ma5: [101, 103, 104, 105, 107, 108, 110, 112, 114, 116],
-                ma10: [100, 101, 102, 103, 104, 105, 106, 107, 108, 109],
-                ma20: [98, 99, 99, 100, 101, 102, 102, 103, 104, 105],
-                ma60: [95, 95, 96, 96, 97, 97, 98, 98, 99, 99],
-              }}
-              className="h-[400px]"
-            />
+            {marketData?.klineDates && marketData.klines ? (
+              <KLineChart
+                data={{
+                  dates: marketData.klineDates,
+                  klines: marketData.klines,
+                  volumes: marketData.klineVolumes || [],
+                  ma5: (marketData.ma5 || []).map((v) => v ?? 0),
+                  ma10: (marketData.ma10 || []).map((v) => v ?? 0),
+                  ma20: (marketData.ma20 || []).map((v) => v ?? 0),
+                  ma60: (marketData.ma60 || []).map((v) => v ?? 0),
+                }}
+                className="h-[400px]"
+              />
+            ) : (
+              <div className="h-[400px] flex items-center justify-center text-[var(--text-muted)] font-mono">
+                {currentStockCode ? "等待分析获取K线数据..." : "请先选择股票"}
+              </div>
+            )}
           </div>
         </div>
 
@@ -370,7 +370,9 @@ export default function AnalysisPage() {
           </h2>
           <AnalysisResult
             signal={finalSignal}
-            confidence={{ value: 0.75, level: ConfidenceLevel.MEDIUM }}
+            confidence={
+              judgment?.confidence || { value: 0.65, level: ConfidenceLevel.MEDIUM }
+            }
           />
         </div>
       )}

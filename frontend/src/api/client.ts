@@ -65,7 +65,7 @@ export const createChatSession = async (
 export const getChatMessages = async (
   sessionId: string,
 ): Promise<ChatMessage[]> => {
-  const { data } = await api.get(`/chat/session/${sessionId}/messages`);
+  const { data } = await api.get(`/chat/history/${encodeURIComponent(sessionId)}`);
   return data.data;
 };
 

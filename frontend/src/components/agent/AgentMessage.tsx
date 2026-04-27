@@ -125,7 +125,7 @@ export function AgentMessage({ message, className }: AgentMessageProps) {
           </span>
           {agentInfo && !isUser && (
             <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-tertiary)] text-[var(--text-muted)] font-mono">
-              {agentInfo.role}
+              {agentInfo.description}
             </span>
           )}
           <span className="text-xs text-[var(--text-muted)] font-mono">

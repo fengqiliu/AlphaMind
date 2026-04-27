@@ -5,6 +5,8 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -27,4 +29,12 @@ public class MarketDataDTO {
     private String updateTime;
     // LLM生成的行情摘要
     private String aiSummary;
+    // K线数据
+    private List<String> klineDates;
+    private List<double[]> klines;       // [open, close, low, high]
+    private List<Long> klineVolumes;
+    private List<Double> ma5;
+    private List<Double> ma10;
+    private List<Double> ma20;
+    private List<Double> ma60;
 }

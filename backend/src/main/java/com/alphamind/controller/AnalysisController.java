@@ -58,7 +58,9 @@ public class AnalysisController {
                         event -> {
                             try {
                                 String json = objectMapper.writeValueAsString(event);
-                                emitter.next("data: " + json + "\n\n");
+                                // 使用具名 SSE 事件格式：event: <type>\ndata: <json>\n\n
+                                String eventName = event.getEvent() != null ? event.getEvent() : "message";
+                                emitter.next("event: " + eventName + "\ndata: " + json + "\n\n");
                             } catch (Exception e) {
                                 log.error("序列化SSE事件失败", e);
                             }

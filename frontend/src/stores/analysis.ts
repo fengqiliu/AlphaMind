@@ -77,17 +77,20 @@ export const useAnalysisStore = create<AnalysisState>((set, get) => ({
           loadingMessage: event.message || "",
         });
         break;
-      case "data":
-        const stage = event.stage;
-        if (stage === "MARKET") set({ marketData: event.data as MarketData });
-        else if (stage === "TECHNICAL")
+      case "data": {
+        // 后端 dataEvent 使用 agentType 字段区分数据类型
+        const agentType = event.agentType || event.stage;
+        if (agentType === "MARKET") set({ marketData: event.data as MarketData });
+        else if (agentType === "TECHNICAL")
           set({ technicalIndicators: event.data as TechnicalIndicators });
-        else if (stage === "SENTIMENT")
+        else if (agentType === "SENTIMENT")
           set({ sentimentData: event.data as SentimentData });
-        else if (stage === "PORTFOLIO")
+        else if (agentType === "PORTFOLIO")
           set({ finalSignal: event.data as TradeSignal });
-        else if (stage === "DEBATE") set({ judgment: event.data as Judgment });
+        else if (agentType === "ARBITRATOR" || agentType === "DEBATE")
+          set({ judgment: event.data as Judgment });
         break;
+      }
       case "complete":
         set({ isAnalyzing: false, currentStage: "COMPLETE" });
         break;

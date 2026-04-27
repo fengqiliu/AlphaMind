@@ -1,7 +1,8 @@
 "use client";
 
 import { create } from "zustand";
-import type { ChatMessage, AgentType, SSEEvent } from "@/types";
+import type { ChatMessage, SSEEvent } from "@/types";
+import { AgentType } from "@/types";
 
 interface ChatState {
   sessionId: string | null;

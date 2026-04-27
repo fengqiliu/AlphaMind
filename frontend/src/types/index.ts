@@ -113,6 +113,14 @@ export interface MarketData {
   pb: number;
   marketCap: number;
   updateTime: string;
+  // K线数据
+  klineDates?: string[];
+  klines?: [number, number, number, number][]; // [open, close, low, high]
+  klineVolumes?: number[];
+  ma5?: (number | null)[];
+  ma10?: (number | null)[];
+  ma20?: (number | null)[];
+  ma60?: (number | null)[];
 }
 
 // 技术指标
@@ -209,8 +217,9 @@ export interface ChatMessage {
 
 // SSE事件
 export interface SSEEvent {
-  event: "stage" | "data" | "error" | "complete";
+  event: "stage" | "data" | "error" | "complete" | "result";
   stage?: string;
+  agentType?: string;
   message?: string;
   data?: unknown;
 }

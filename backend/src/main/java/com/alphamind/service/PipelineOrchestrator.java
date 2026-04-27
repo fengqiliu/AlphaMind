@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 /**
@@ -40,8 +42,10 @@ public class PipelineOrchestrator {
                 stockCode, strategy, enableDebate);
 
         AnalysisReportDTO report = AnalysisReportDTO.builder()
+                .id(UUID.randomUUID().toString())
                 .stockCode(stockCode)
                 .stockName(stockName)
+                .createdAt(LocalDateTime.now())
                 .build();
 
         try {
