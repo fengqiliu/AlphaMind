@@ -1,0 +1,243 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+:root {
+  /* Dark terminal palette */
+  --bg-primary: #0a0b0f;
+  --bg-secondary: #12141a;
+  --bg-tertiary: #1a1d25;
+  --bg-card: rgba(26, 29, 37, 0.8);
+  --bg-glass: rgba(26, 29, 37, 0.6);
+
+  /* Text colors */
+  --text-primary: #e4e4e7;
+  --text-secondary: #a1a1aa;
+  --text-muted: #52525b;
+
+  /* Accent - Electric cyan */
+  --accent: #00f0ff;
+  --accent-glow: rgba(0, 240, 255, 0.3);
+  --accent-subtle: rgba(0, 240, 255, 0.1);
+
+  /* Signal colors */
+  --bullish: #00ff88;
+  --bullish-glow: rgba(0, 255, 136, 0.3);
+  --bearish: #ff3366;
+  --bearish-glow: rgba(255, 51, 102, 0.3);
+  --neutral: #ffaa00;
+  --neutral-glow: rgba(255, 170, 0, 0.3);
+
+  /* Borders */
+  --border: rgba(255, 255, 255, 0.06);
+  --border-glow: rgba(0, 240, 255, 0.2);
+
+  /* Grid pattern */
+  --grid-color: rgba(255, 255, 255, 0.02);
+}
+
+@theme inline {
+  --color-background: var(--bg-primary);
+  --color-foreground: var(--text-primary);
+  --font-sans: "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Animated grid background */
+.grid-bg {
+  background-image:
+    linear-gradient(var(--grid-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-color) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Glass morphism card */
+.glass-card {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.glass-card-glow {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border-glow);
+  box-shadow:
+    0 0 40px rgba(0, 240, 255, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border-radius: 16px;
+}
+
+/* Pulse animation for live indicators */
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.pulse-live {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+}
+
+.pulse-ring::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, var(--accent), #00ff88);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Signal badges */
+.signal-bullish {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 255, 136, 0.2),
+    rgba(0, 255, 136, 0.05)
+  );
+  border: 1px solid rgba(0, 255, 136, 0.3);
+  color: var(--bullish);
+}
+
+.signal-bearish {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 51, 102, 0.2),
+    rgba(255, 51, 102, 0.05)
+  );
+  border: 1px solid rgba(255, 51, 102, 0.3);
+  color: var(--bearish);
+}
+
+.signal-neutral {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 170, 0, 0.2),
+    rgba(255, 170, 0, 0.05)
+  );
+  border: 1px solid rgba(255, 170, 0, 0.3);
+  color: var(--neutral);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+}
+
+/* Noise texture overlay */
+.noise-overlay::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* Staggered entrance animation */
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-enter {
+  animation: fade-up 0.6s ease-out forwards;
+  opacity: 0;
+}
+
+.delay-100 {
+  animation-delay: 0.1s;
+}
+.delay-200 {
+  animation-delay: 0.2s;
+}
+.delay-300 {
+  animation-delay: 0.3s;
+}
+.delay-400 {
+  animation-delay: 0.4s;
+}
+.delay-500 {
+  animation-delay: 0.5s;
+}
+
+/* Button hover glow */
+.btn-glow:hover {
+  box-shadow: 0 0 30px var(--accent-glow);
+}
+
+/* Chart container styling */
+.chart-container {
+  background: linear-gradient(
+    180deg,
+    rgba(26, 29, 37, 0.5) 0%,
+    rgba(18, 20, 26, 0.8) 100%
+  );
+}
+
+/* Input focus glow */
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
