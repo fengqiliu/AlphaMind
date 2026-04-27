@@ -15,6 +15,8 @@ public class TechnicalIndicatorsDTO {
     private KdjDTO kdj;
     private BollingerDTO bollinger;
     private Integer technicalScore;
+    // LLM生成的技术指标解读
+    private String aiInterpretation;
 
     @Data
     @Builder

@@ -34,13 +34,21 @@ public class PortfolioAgent extends BaseAgent {
             TradeSignalDTO tradeSignal = generateTradeSignal(
                     marketData, technicalIndicators, sentimentData, strategy);
 
+            // 用LLM增强投资理由
+            String aiRationale = generateAiRationale(marketData, technicalIndicators, sentimentData, strategy, tradeSignal);
+            if (aiRationale != null) {
+                tradeSignal.setRationale(aiRationale);
+            }
+
             report.setTradeSignal(tradeSignal);
+            setContext("tradeSignal", tradeSignal);
 
             // 生成置信度
             ConfidenceDTO confidence = calculateConfidence(
                     technicalIndicators, sentimentData, strategy);
 
             report.setConfidence(confidence);
+            setContext("confidence", confidence);
 
             logInfo("投资建议生成完成，信号: " + tradeSignal.getType());
             return report;
@@ -55,42 +63,30 @@ public class PortfolioAgent extends BaseAgent {
         TradeSignalDTO signal = getContext("tradeSignal");
         ConfidenceDTO confidence = getContext("confidence");
 
-        String response = String.format("""
-            **投资建议**
+        if (signal == null) {
+            return buildMsg("暂无投资建议，请先发起分析。");
+        }
 
-            **交易信号**: %s
-            **置信度**: %.0f%% (%s)
+        // 优先使用LLM
+        String portfolioPrompt = String.format("""
+                当前投资建议：
+                - 信号: %s (置信度 %.0f%%)
+                - 入场价: ¥%.2f | 目标价: ¥%.2f | 止损价: ¥%.2f
+                - 持仓周期: %d天
+                - 理由: %s
 
-            **交易计划**:
-            - 入场价: ¥%.2f
-            - 目标价: ¥%.2f (上涨空间: %+.2f%%)
-            - 止损价: ¥%.2f (下跌风险: %.2f%%)
-            - 建议持仓周期: %d个交易日
+                用户问题：%s
+                """,
+                signal.getType().getLabel(), confidence != null ? confidence.getValue() * 100 : 0,
+                signal.getEntryPrice(), signal.getTargetPrice(), signal.getStopLoss(),
+                signal.getHoldingPeriodDays(), signal.getRationale(), userMessage.getContent());
 
-            **投资理由**:
-            %s
-            """,
-                signal.getType().getLabel(),
-                confidence.getValue() * 100,
-                confidence.getLevel().getLabel(),
-                signal.getEntryPrice(),
-                signal.getTargetPrice(),
-                ((signal.getTargetPrice() - signal.getEntryPrice()) / signal.getEntryPrice()) * 100,
-                signal.getStopLoss(),
-                ((signal.getEntryPrice() - signal.getStopLoss()) / signal.getEntryPrice()) * 100,
-                signal.getHoldingPeriodDays(),
-                signal.getRationale()
-        );
+        String response = llmCall(getSystemPrompt(), portfolioPrompt);
+        if (response == null) {
+            response = buildPortfolioTemplate(signal, confidence);
+        }
 
-        return ChatMessage.builder()
-                .id(java.util.UUID.randomUUID().toString())
-                .role("assistant")
-                .content(response)
-                .agentType(agentType)
-                .agentName(agentType.getName())
-                .modelUsed(getModelName())
-                .timestamp(java.time.LocalDateTime.now())
-                .build();
+        return buildMsg(response);
     }
 
     @Override
@@ -121,6 +117,64 @@ public class PortfolioAgent extends BaseAgent {
             - 提供具体的价格和仓位建议
             - 解释决策依据
             """;
+    }
+
+    private String generateAiRationale(MarketDataDTO market, TechnicalIndicatorsDTO tech,
+                                        SentimentDataDTO sentiment, StrategyType strategy, TradeSignalDTO signal) {
+        String prompt = String.format("""
+                综合分析数据如下：
+                - 股票: %s (%s) 当前价: ¥%.2f 涨跌: %+.2f%%
+                - 技术评分: %d/100 | 舆情评分: %.0f/100
+                - 策略类型: %s | 推荐操作: %s
+                - 目标价: ¥%.2f | 止损价: ¥%.2f
+
+                请给出简洁专业的投资理由（200字内）。
+                """,
+                market.getStockName(), market.getStockCode(),
+                market.getCurrentPrice(), market.getChangePercent() != null ? market.getChangePercent() : 0,
+                tech.getTechnicalScore(), sentiment.getSentimentScore() * 100,
+                strategy.name(), signal.getType().getLabel(),
+                signal.getTargetPrice(), signal.getStopLoss());
+        return llmCall(getSystemPrompt(), prompt);
+    }
+
+    private String buildPortfolioTemplate(TradeSignalDTO signal, ConfidenceDTO confidence) {
+        return String.format("""
+                **投资建议**
+
+                **交易信号**: %s
+                **置信度**: %.0f%% (%s)
+
+                **交易计划**:
+                - 入场价: ¥%.2f
+                - 目标价: ¥%.2f (上涨空间: %+.2f%%)
+                - 止损价: ¥%.2f (下跌风险: %.2f%%)
+                - 建议持仓周期: %d个交易日
+
+                **投资理由**: %s
+                """,
+                signal.getType().getLabel(),
+                confidence != null ? confidence.getValue() * 100 : 0,
+                confidence != null ? confidence.getLevel().getLabel() : "N/A",
+                signal.getEntryPrice(),
+                signal.getTargetPrice(),
+                ((signal.getTargetPrice() - signal.getEntryPrice()) / signal.getEntryPrice()) * 100,
+                signal.getStopLoss(),
+                ((signal.getEntryPrice() - signal.getStopLoss()) / signal.getEntryPrice()) * 100,
+                signal.getHoldingPeriodDays(),
+                signal.getRationale());
+    }
+
+    private ChatMessage buildMsg(String content) {
+        return ChatMessage.builder()
+                .id(java.util.UUID.randomUUID().toString())
+                .role("assistant")
+                .content(content)
+                .agentType(agentType)
+                .agentName(agentType.getName())
+                .modelUsed(isLlmAvailable() ? "AI" : "template")
+                .timestamp(java.time.LocalDateTime.now())
+                .build();
     }
 
     private TradeSignalDTO generateTradeSignal(

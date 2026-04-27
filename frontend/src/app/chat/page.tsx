@@ -6,11 +6,14 @@ import { AgentMessage } from "@/components/agent/AgentMessage";
 import { AgentSelector } from "@/components/agent/AgentSelector";
 import { StockSearch } from "@/components/common/StockSearch";
 import { Button } from "@/components/common/Button";
+import { createChatSession } from "@/api/client";
 import type { StockSearchResult } from "@/types";
 import { Send, Loader2, Trash2, Zap } from "lucide-react";
 
 export default function ChatPage() {
   const [stockSelected, setStockSelected] = useState(false);
+  const [currentStockCode, setCurrentStockCode] = useState<string | null>(null);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   const {
     messages,
@@ -19,6 +22,8 @@ export default function ChatPage() {
     isLoading,
     loadingMessage,
     error,
+    sessionId,
+    setSessionId,
     setInputMessage,
     setSelectedAgent,
     setIsLoading,
@@ -48,58 +53,74 @@ export default function ChatPage() {
     }
   }, [inputMessage]);
 
-  const handleStockSelect = (stock: StockSearchResult) => {
+  const handleStockSelect = async (stock: StockSearchResult) => {
     reset();
+    setCurrentStockCode(stock.code);
     setStockSelected(true);
+
+    try {
+      const sid = await createChatSession(stock.code);
+      setSessionId(sid);
+    } catch {
+      setError("创建会话失败，请稍后重试");
+    }
   };
 
   const handleSend = () => {
     if (!inputMessage.trim() || isLoading) return;
 
+    const content = inputMessage.trim();
+
     addMessage({
       id: crypto.randomUUID(),
       role: "user",
-      content: inputMessage,
+      content,
       agentType: selectedAgent,
       timestamp: new Date().toISOString(),
     });
 
     setIsLoading(true);
-    setLoadingMessage("正在分析...");
+    setLoadingMessage("AI分析中...");
     setInputMessage("");
 
-    const stages = [
-      { stage: "MARKET", message: "行情Agent处理中..." },
-      { stage: "TECHNICAL", message: "技术Agent分析中..." },
-      { stage: "SENTIMENT", message: "舆情Agent收集中..." },
-    ];
+    // 关闭上一个连接
+    eventSourceRef.current?.close();
 
-    let delay = 0;
-    stages.forEach((s, i) => {
-      setTimeout(
-        () =>
-          handleSSEEvent({
-            event: "stage",
-            stage: s.stage,
-            message: s.message,
-          }),
-        delay,
-      );
-      delay += 500;
-    });
+    const sid = sessionId || "default";
+    const url = `/api/v1/chat/stream/${sid}?message=${encodeURIComponent(content)}&agentType=${selectedAgent}`;
+    const es = new EventSource(url);
+    eventSourceRef.current = es;
 
-    setTimeout(() => {
-      handleSSEEvent({
-        event: "data",
-        stage: selectedAgent,
-        data: {
-          analysis: "基于当前市场数据和技术指标分析，该股票呈现以下特征...",
-          recommendation: "建议关注",
-          confidence: 0.72,
-        },
-      });
-      handleSSEEvent({ event: "complete" });
-    }, delay + 500);
+    es.onmessage = (e: MessageEvent) => {
+      try {
+        const payload = JSON.parse(e.data);
+        if (payload.event === "message" && payload.data) {
+          addMessage({
+            id: payload.data.id || crypto.randomUUID(),
+            role: payload.data.role || "assistant",
+            content: payload.data.content || "",
+            agentType: payload.data.agentType || selectedAgent,
+            agentName: payload.data.agentName,
+            timestamp: payload.data.timestamp || new Date().toISOString(),
+          });
+          setIsLoading(false);
+        } else if (payload.event === "error") {
+          setError(payload.message || "分析失败");
+          setIsLoading(false);
+          es.close();
+          eventSourceRef.current = null;
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    es.onerror = () => {
+      setError("连接失败，请检查后端服务");
+      setIsLoading(false);
+      es.close();
+      eventSourceRef.current = null;
+    };
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

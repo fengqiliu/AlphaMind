@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/common/Button";
 import { ConfidenceBar } from "@/components/common/ConfidenceBar";
+import { getAnalysisHistory } from "@/api/client";
 import type { AnalysisReport, SignalType } from "@/types";
 import { SignalType as ST } from "@/types";
 import { ConfidenceLevel } from "@/types";
@@ -21,76 +22,16 @@ import { cn, formatDate } from "@/utils";
 export default function HistoryPage() {
   const [reports, setReports] = useState<AnalysisReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<AnalysisReport | null>(
     null,
   );
 
   useEffect(() => {
-    setTimeout(() => {
-      setReports([
-        {
-          id: "1",
-          stockCode: "000858",
-          stockName: "五粮液",
-          finalSignal: ST.BUY,
-          confidence: { value: 0.78, level: ConfidenceLevel.HIGH },
-          tradeSignal: {
-            type: ST.BUY,
-            entryPrice: 165.5,
-            targetPrice: 180.0,
-            stopLoss: 155.0,
-            holdingPeriodDays: 30,
-            rationale: "技术面MACD金叉",
-          },
-          marketData: {} as any,
-          technicalIndicators: {} as any,
-          sentimentData: {} as any,
-          judgment: {} as any,
-          createdAt: "2026-04-27T10:30:00",
-        },
-        {
-          id: "2",
-          stockCode: "600519",
-          stockName: "贵州茅台",
-          finalSignal: ST.HOLD,
-          confidence: { value: 0.55, level: ConfidenceLevel.MEDIUM },
-          tradeSignal: {
-            type: ST.HOLD,
-            entryPrice: 1680.0,
-            targetPrice: 1750.0,
-            stopLoss: 1600.0,
-            holdingPeriodDays: 15,
-            rationale: "估值偏高，建议观望",
-          },
-          marketData: {} as any,
-          technicalIndicators: {} as any,
-          sentimentData: {} as any,
-          judgment: {} as any,
-          createdAt: "2026-04-26T14:20:00",
-        },
-        {
-          id: "3",
-          stockCode: "000001",
-          stockName: "平安银行",
-          finalSignal: ST.SELL,
-          confidence: { value: 0.65, level: ConfidenceLevel.MEDIUM },
-          tradeSignal: {
-            type: ST.SELL,
-            entryPrice: 12.35,
-            targetPrice: 11.5,
-            stopLoss: 13.0,
-            holdingPeriodDays: 7,
-            rationale: "技术破位，建议止损",
-          },
-          marketData: {} as any,
-          technicalIndicators: {} as any,
-          sentimentData: {} as any,
-          judgment: {} as any,
-          createdAt: "2026-04-25T09:15:00",
-        },
-      ]);
-      setIsLoading(false);
-    }, 500);
+    getAnalysisHistory()
+      .then(setReports)
+      .catch(() => setError("加载历史记录失败"))
+      .finally(() => setIsLoading(false));
   }, []);
 
   const signalConfig = {

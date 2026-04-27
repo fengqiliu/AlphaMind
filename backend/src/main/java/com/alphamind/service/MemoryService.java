@@ -51,7 +51,8 @@ public class MemoryService {
     public List<ChatMessage> getSessionHistory(String sessionId, int limit) {
         String key = SESSION_KEY_PREFIX + sessionId;
         try {
-            List<ChatMessage> messages = redisTemplate.opsForList().range(key, -limit, -1);
+            @SuppressWarnings("unchecked")
+            List<ChatMessage> messages = (List<ChatMessage>) (List<?>) redisTemplate.opsForList().range(key, -limit, -1);
             return messages != null ? messages : new ArrayList<>();
         } catch (Exception e) {
             // Fallback to local memory
@@ -82,7 +83,8 @@ public class MemoryService {
     public List<AnalysisReportDTO> getStockHistory(String stockCode, int limit) {
         String key = HISTORY_KEY_PREFIX + stockCode;
         try {
-            List<AnalysisReportDTO> reports = redisTemplate.opsForList().range(key, -limit, -1);
+            @SuppressWarnings("unchecked")
+            List<AnalysisReportDTO> reports = (List<AnalysisReportDTO>) (List<?>) redisTemplate.opsForList().range(key, -limit, -1);
             return reports != null ? reports : new ArrayList<>();
         } catch (Exception e) {
             log.warn("Failed to get history from Redis: {}", e.getMessage());

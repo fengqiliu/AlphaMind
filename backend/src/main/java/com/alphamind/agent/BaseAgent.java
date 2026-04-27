@@ -4,6 +4,8 @@ import com.alphamind.model.dto.AnalysisReportDTO;
 import com.alphamind.model.dto.ChatMessage;
 import com.alphamind.model.enums.AgentType;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,6 +19,12 @@ public abstract class BaseAgent {
     protected final AgentType agentType;
     protected final Map<String, Object> context;
     protected String modelName;
+
+    /**
+     * Spring AI ChatClient - 可选注入，无 API key 时为 null
+     */
+    @Autowired(required = false)
+    protected ChatClient chatClient;
 
     protected BaseAgent(AgentType agentType) {
         this.agentType = agentType;
@@ -85,6 +93,35 @@ public abstract class BaseAgent {
      */
     public String getDescription() {
         return agentType.getDescription();
+    }
+
+    /**
+     * 检查LLM是否可用
+     */
+    protected boolean isLlmAvailable() {
+        return chatClient != null;
+    }
+
+    /**
+     * 调用LLM生成分析文本
+     * @param systemPrompt 系统提示词
+     * @param userPrompt   用户提示词（包含上下文数据）
+     * @return LLM响应文本，失败时返回 null
+     */
+    protected String llmCall(String systemPrompt, String userPrompt) {
+        if (chatClient == null) {
+            return null;
+        }
+        try {
+            return chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(userPrompt)
+                    .call()
+                    .content();
+        } catch (Exception e) {
+            log.warn("[{}] LLM调用失败，将使用默认响应: {}", agentType.getName(), e.getMessage());
+            return null;
+        }
     }
 
     /**

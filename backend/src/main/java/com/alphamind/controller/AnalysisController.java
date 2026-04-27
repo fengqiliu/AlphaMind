@@ -11,7 +11,10 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
+import java.util.Deque;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
  * 分析控制器 - 处理股票分析请求，支持SSE流式响应
@@ -26,6 +29,10 @@ public class AnalysisController {
     private final PipelineOrchestrator pipelineOrchestrator;
     private final ObjectMapper objectMapper;
 
+    // 内存中的分析历史（最近50条）
+    private final Deque<AnalysisReportDTO> analysisHistory = new ConcurrentLinkedDeque<>();
+    private static final int MAX_HISTORY = 50;
+
     /**
      * SSE流式分析
      */
@@ -38,16 +45,16 @@ public class AnalysisController {
             @RequestParam(required = false) String sessionId) {
 
         String finalSessionId = sessionId != null ? sessionId : UUID.randomUUID().toString();
-        stockName = stockName != null ? stockName : stockCode;
+        final String finalStockName = stockName != null ? stockName : stockCode;
 
         log.info("收到分析请求: stockCode={}, stockName={}, strategy={}, enableDebate={}, sessionId={}",
-                stockCode, stockName, strategy, enableDebate, finalSessionId);
+                stockCode, finalStockName, strategy, enableDebate, finalSessionId);
 
         return Flux.create(emitter -> {
             try {
                 // 执行分析
                 AnalysisReportDTO report = pipelineOrchestrator.execute(
-                        stockCode, stockName, strategy, enableDebate,
+                        stockCode, finalStockName, strategy, enableDebate,
                         event -> {
                             try {
                                 String json = objectMapper.writeValueAsString(event);
@@ -66,6 +73,9 @@ public class AnalysisController {
                 } catch (Exception e) {
                     log.error("序列化结果失败", e);
                 }
+
+                // 保存到历史记录
+                saveToHistory(report);
 
                 emitter.complete();
 
@@ -99,10 +109,35 @@ public class AnalysisController {
                     null // 同步模式不需要回调
             );
 
+            saveToHistory(report);
             return ApiResponse.success("分析完成", report);
         } catch (Exception e) {
             log.error("分析失败: {}", request.getStockCode(), e);
             return ApiResponse.error(e.getMessage());
+        }
+    }
+
+    /**
+     * 分析历史记录
+     */
+    @GetMapping("/history")
+    public ApiResponse<List<AnalysisReportDTO>> getHistory(
+            @RequestParam(required = false) String stockCode,
+            @RequestParam(required = false, defaultValue = "20") int limit) {
+
+        List<AnalysisReportDTO> history = analysisHistory.stream()
+                .filter(r -> stockCode == null || stockCode.equals(r.getStockCode()))
+                .limit(Math.min(limit, MAX_HISTORY))
+                .toList();
+
+        return ApiResponse.success(history);
+    }
+
+    private void saveToHistory(AnalysisReportDTO report) {
+        if (report == null) return;
+        analysisHistory.addFirst(report);
+        while (analysisHistory.size() > MAX_HISTORY) {
+            analysisHistory.pollLast();
         }
     }
 }

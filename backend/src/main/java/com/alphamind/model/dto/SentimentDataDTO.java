@@ -20,4 +20,6 @@ public class SentimentDataDTO {
     private Map<String, Integer> newsCountBySource;
     private Double mediaAttention;
     private String analysisSummary;
+    // LLM生成的舆情综合摘要
+    private String aiSummary;
 }

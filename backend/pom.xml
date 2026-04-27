@@ -18,8 +18,8 @@
     <description>Multi-Agent Stock Analysis System Backend</description>
 
     <properties>
-        <java.version>21</java.version>
-        <spring-ai.version>1.0.0-M7</spring-ai.version>
+        <java.version>17</java.version>
+        <spring-ai.version>1.0.0</spring-ai.version>
     </properties>
 
     <dependencies>
@@ -49,15 +49,15 @@
         <!-- Spring AI -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-openai-spring-boot-starter</artifactId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-anthropic-spring-boot-starter</artifactId>
+            <artifactId>spring-ai-starter-model-anthropic</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-deepseek-spring-boot-starter</artifactId>
+            <artifactId>spring-ai-starter-model-deepseek</artifactId>
         </dependency>
 
         <!-- Database -->
@@ -70,7 +70,7 @@
         <!-- Redis Vector Store for Memory -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-redis-store</artifactId>
+            <artifactId>spring-ai-starter-vector-store-redis</artifactId>
         </dependency>
 
         <!-- JSON -->
@@ -141,6 +141,11 @@
             <snapshots>
                 <enabled>false</enabled>
             </snapshots>
+        </repository>
+        <repository>
+            <id>central</id>
+            <name>Maven Central</name>
+            <url>https://repo.maven.apache.org/maven2</url>
         </repository>
     </repositories>
 </project>

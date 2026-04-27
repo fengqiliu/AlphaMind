@@ -25,4 +25,6 @@ public class MarketDataDTO {
     private Double pb;
     private Long marketCap;
     private String updateTime;
+    // LLM生成的行情摘要
+    private String aiSummary;
 }

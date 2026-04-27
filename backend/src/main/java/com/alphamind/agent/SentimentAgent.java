@@ -32,6 +32,10 @@ public class SentimentAgent extends BaseAgent {
             // 分析舆情数据
             SentimentDataDTO sentimentData = analyzeSentiment(report.getStockCode(), marketData);
 
+            // 调用LLM生成舆情综合摘要
+            String aiSummary = generateSentimentSummary(sentimentData, marketData);
+            sentimentData.setAiSummary(aiSummary);
+
             report.setSentimentData(sentimentData);
             setContext("sentimentData", sentimentData);
 
@@ -46,39 +50,16 @@ public class SentimentAgent extends BaseAgent {
     @Override
     public ChatMessage chat(ChatMessage userMessage) {
         SentimentDataDTO sentimentData = getContext("sentimentData");
-
-        StringBuilder response = new StringBuilder();
-        response.append("**舆情分析报告**\n\n");
-
-        response.append("**舆情评分**: ").append(String.format("%.1f", sentimentData.getSentimentScore() * 100)).append("/100\n");
-        response.append("**舆情趋势**: ").append(sentimentData.getSentimentTrend()).append("\n\n");
-
-        if (!sentimentData.getPositiveFactors().isEmpty()) {
-            response.append("**利好因素**:\n");
-            sentimentData.getPositiveFactors().forEach(factor ->
-                    response.append("- ").append(factor).append("\n"));
-            response.append("\n");
+        if (sentimentData == null) {
+            return buildMsg("暂无舆情数据，请先发起分析。");
         }
 
-        if (!sentimentData.getNegativeFactors().isEmpty()) {
-            response.append("**利空因素**:\n");
-            sentimentData.getNegativeFactors().forEach(factor ->
-                    response.append("- ").append(factor).append("\n"));
-            response.append("\n");
+        // 优先使用LLM生成回复
+        String response = llmCall(getSystemPrompt(), buildSentimentPrompt(sentimentData, userMessage.getContent()));
+        if (response == null) {
+            response = buildSentimentTemplateResponse(sentimentData);
         }
-
-        response.append("**媒体关注度**: ").append(String.format("%.1f", sentimentData.getMediaAttention() * 100)).append("/100\n\n");
-        response.append("**总结**: ").append(sentimentData.getAnalysisSummary());
-
-        return ChatMessage.builder()
-                .id(java.util.UUID.randomUUID().toString())
-                .role("assistant")
-                .content(response.toString())
-                .agentType(agentType)
-                .agentName(agentType.getName())
-                .modelUsed(getModelName())
-                .timestamp(java.time.LocalDateTime.now())
-                .build();
+        return buildMsg(response);
     }
 
     @Override
@@ -100,37 +81,101 @@ public class SentimentAgent extends BaseAgent {
 
             回答要求：
             - 客观呈现利好和利空因素
-            - 注明信息来源的可信度
-            - 给出舆情总结
+            - 给出舆情总结和趋势判断
             """;
     }
 
+    private String generateSentimentSummary(SentimentDataDTO data, MarketDataDTO market) {
+        String prompt = String.format(
+                "请简要分析 %s 的市场舆情：舆情评分%.0f/100，趋势:%s，利好%d项，利空%d项，媒体关注度%.0f%%",
+                market.getStockName(), data.getSentimentScore() * 100, data.getSentimentTrend(),
+                data.getPositiveFactors().size(), data.getNegativeFactors().size(),
+                data.getMediaAttention() * 100);
+        String result = llmCall(getSystemPrompt(), prompt);
+        return result != null ? result : data.getAnalysisSummary();
+    }
+
+    private String buildSentimentPrompt(SentimentDataDTO data, String question) {
+        return String.format("""
+                舆情数据：
+                - 舆情评分: %.0f/100
+                - 舆情趋势: %s
+                - 利好因素: %s
+                - 利空因素: %s
+                - 媒体关注度: %.0f/100
+
+                用户问题：%s
+                """,
+                data.getSentimentScore() * 100, data.getSentimentTrend(),
+                String.join("；", data.getPositiveFactors()),
+                String.join("；", data.getNegativeFactors()),
+                data.getMediaAttention() * 100, question);
+    }
+
+    private String buildSentimentTemplateResponse(SentimentDataDTO data) {
+        StringBuilder sb = new StringBuilder("**舆情分析报告**\n\n");
+        sb.append(String.format("**舆情评分**: %.0f/100\n", data.getSentimentScore() * 100));
+        sb.append("**舆情趋势**: ").append(data.getSentimentTrend()).append("\n\n");
+        if (!data.getPositiveFactors().isEmpty()) {
+            sb.append("**利好因素**:\n");
+            data.getPositiveFactors().forEach(f -> sb.append("- ").append(f).append("\n"));
+            sb.append("\n");
+        }
+        if (!data.getNegativeFactors().isEmpty()) {
+            sb.append("**利空因素**:\n");
+            data.getNegativeFactors().forEach(f -> sb.append("- ").append(f).append("\n"));
+            sb.append("\n");
+        }
+        sb.append(String.format("**媒体关注度**: %.0f/100\n\n", data.getMediaAttention() * 100));
+        sb.append("**总结**: ").append(data.getAnalysisSummary());
+        return sb.toString();
+    }
+
+    private ChatMessage buildMsg(String content) {
+        return ChatMessage.builder()
+                .id(java.util.UUID.randomUUID().toString())
+                .role("assistant")
+                .content(content)
+                .agentType(agentType)
+                .agentName(agentType.getName())
+                .modelUsed(isLlmAvailable() ? "AI" : "template")
+                .timestamp(java.time.LocalDateTime.now())
+                .build();
+    }
+
     /**
-     * 分析舆情 (模拟实现)
-     * TODO: 接入真实新闻数据源
+     * 分析舆情（模拟实现 - TODO: 接入真实新闻数据源）
      */
     private SentimentDataDTO analyzeSentiment(String stockCode, MarketDataDTO marketData) {
+        // 根据涨跌幅动态调整舆情评分
+        double changePct = marketData.getChangePercent() != null ? marketData.getChangePercent() : 0;
+        double baseScore = 0.55 + changePct * 0.02;
+        baseScore = Math.max(0.2, Math.min(0.9, baseScore));
+
+        String trend = baseScore > 0.6 ? "稳中向好" : baseScore > 0.4 ? "震荡观望" : "谨慎悲观";
+
         return SentimentDataDTO.builder()
-                .sentimentScore(0.65)
-                .sentimentTrend("稳中向好")
+                .sentimentScore(Math.round(baseScore * 100) / 100.0)
+                .sentimentTrend(trend)
                 .positiveFactors(List.of(
-                        "公司发布一季度业绩预告，净利润同比增长15%",
-                        "多家券商维持"强烈推荐"评级",
-                        "机构投资者持续增持",
-                        "行业政策利好出台"
+                        "公司近期业绩预告超市场预期",
+                        "多家券商维持\"推荐\"评级",
+                        "行业政策边际改善",
+                        "机构投资者持续关注"
                 ))
                 .negativeFactors(List.of(
-                        "原材料成本上升压力",
-                        "行业竞争加剧"
+                        "宏观经济不确定性仍存在",
+                        "行业竞争加剧，毛利率承压"
                 ))
                 .newsCountBySource(Map.of(
-                        "东方财富", 25,
-                        "同花顺", 18,
-                        "雪球", 42,
-                        "微博", 156
+                        "东方财富", 18,
+                        "同花顺", 12,
+                        "雪球", 35,
+                        "微博", 88
                 ))
-                .mediaAttention(0.72)
-                .analysisSummary("该股票近期舆情整体偏正面，机构评级积极，但需关注成本端压力。建议持续跟踪后续舆情变化。")
+                .mediaAttention(Math.min(0.95, 0.5 + Math.abs(changePct) * 0.05 + Math.random() * 0.2))
+                .analysisSummary(String.format("该股近期舆情%s，利好因素较多，但需关注宏观风险。",
+                        baseScore > 0.6 ? "整体偏正面" : "处于中性偏谨慎状态"))
                 .build();
     }
 }

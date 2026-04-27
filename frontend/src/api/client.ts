@@ -16,22 +16,22 @@ export const searchStocks = async (
   keyword: string,
 ): Promise<StockSearchResult[]> => {
   const { data } = await api.get(
-    `/stocks/search?keyword=${encodeURIComponent(keyword)}`,
+    `/stocks/search?query=${encodeURIComponent(keyword)}`,
   );
   return data.data;
 };
 
 export const getWatchlist = async (): Promise<WatchlistItem[]> => {
-  const { data } = await api.get("/watchlist");
+  const { data } = await api.get("/stocks/watchlist");
   return data.data;
 };
 
 export const addToWatchlist = async (stockCode: string): Promise<void> => {
-  await api.post("/watchlist", { stockCode });
+  await api.post(`/stocks/watchlist/${encodeURIComponent(stockCode)}`);
 };
 
 export const removeFromWatchlist = async (stockCode: string): Promise<void> => {
-  await api.delete(`/watchlist/${stockCode}`);
+  await api.delete(`/stocks/watchlist/${encodeURIComponent(stockCode)}`);
 };
 
 export const getAnalysisReport = async (
@@ -56,7 +56,9 @@ export const createChatSession = async (
   stockCode: string,
   strategy?: string,
 ): Promise<string> => {
-  const { data } = await api.post("/chat/session", { stockCode, strategy });
+  const params = new URLSearchParams({ stockCode });
+  if (strategy) params.append("strategy", strategy);
+  const { data } = await api.post(`/chat/session?${params}`);
   return data.data.sessionId;
 };
 

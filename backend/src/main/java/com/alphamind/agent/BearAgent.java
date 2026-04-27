@@ -20,6 +20,12 @@ public class BearAgent extends BaseAgent {
     @Override
     public AnalysisReportDTO analyze(AnalysisReportDTO report) {
         logInfo("开始空头分析: " + report.getStockCode());
+        MarketDataDTO market = getContext("marketData");
+        TechnicalIndicatorsDTO tech = getContext("technicalIndicators");
+        SentimentDataDTO sentiment = getContext("sentimentData");
+
+        String argument = generateBearArgument(market, tech, sentiment);
+        setContext("bearArgument", argument);
         return report;
     }
 
@@ -29,15 +35,19 @@ public class BearAgent extends BaseAgent {
         TechnicalIndicatorsDTO technical = getContext("technicalIndicators");
         SentimentDataDTO sentiment = getContext("sentimentData");
 
-        String analysis = generateBearishAnalysis(marketData, technical, sentiment);
+        String prompt = buildBearPrompt(marketData, technical, sentiment, userMessage.getContent());
+        String response = llmCall(getSystemPrompt(), prompt);
+        if (response == null) {
+            response = generateBearArgument(marketData, technical, sentiment);
+        }
 
         return ChatMessage.builder()
                 .id(java.util.UUID.randomUUID().toString())
                 .role("assistant")
-                .content(analysis)
+                .content(response)
                 .agentType(agentType)
                 .agentName(agentType.getName())
-                .modelUsed(getModelName())
+                .modelUsed(isLlmAvailable() ? "AI" : "template")
                 .timestamp(java.time.LocalDateTime.now())
                 .build();
     }
@@ -75,48 +85,62 @@ public class BearAgent extends BaseAgent {
         return 3;
     }
 
-    private String generateBearishAnalysis(
-            MarketDataDTO marketData,
-            TechnicalIndicatorsDTO technical,
-            SentimentDataDTO sentiment) {
+    private String buildBearPrompt(MarketDataDTO market, TechnicalIndicatorsDTO tech, SentimentDataDTO sentiment, String question) {
+        return String.format("""
+                股票: %s (%s), 当前价: ¥%.2f, 涨跌: %+.2f%%
+                技术评分: %d/100, 舆情评分: %.0f/100
+                用户问题: %s
+                请从空头立场给出3-5个核心风险点和止损建议。
+                """,
+                market != null ? market.getStockName() : "N/A",
+                market != null ? market.getStockCode() : "N/A",
+                market != null ? market.getCurrentPrice() : 0,
+                market != null && market.getChangePercent() != null ? market.getChangePercent() : 0,
+                tech != null ? tech.getTechnicalScore() : 0,
+                sentiment != null ? sentiment.getSentimentScore() * 100 : 0,
+                question);
+    }
+
+    private String generateBearArgument(MarketDataDTO marketData, TechnicalIndicatorsDTO technical, SentimentDataDTO sentiment) {
+        if (marketData == null) return "【空头观点】数据暂不可用，请先发起分析。";
 
         StringBuilder analysis = new StringBuilder();
         analysis.append("**【空头观点】审慎看待回调风险**\n\n");
-
         analysis.append("**核心看空逻辑**:\n\n");
 
-        // 技术面风险
-        analysis.append("1️⃣ **技术面承压**\n");
-        TechnicalIndicatorsDTO.MacdDTO macd = technical.getMacd();
-        TechnicalIndicatorsDTO.RsiDTO rsi = technical.getRsi();
-        if (rsi.getRsi12() > 70) {
-            analysis.append("   - RSI超买区域，短期有调整需求\n");
+        if (technical != null) {
+            analysis.append("1️⃣ **技术面承压**\n");
+            TechnicalIndicatorsDTO.RsiDTO rsi = technical.getRsi();
+            if (rsi != null && rsi.getRsi12() > 70) {
+                analysis.append("   - RSI超买区域，短期有调整需求\n");
+            }
+            if (technical.getKdj() != null && technical.getKdj().getJ() > 90) {
+                analysis.append("   - KDJ J值超买，动能可能衰竭\n");
+            }
+            analysis.append(String.format("   - 综合技术评分 %d/100，需谨慎\n\n", technical.getTechnicalScore()));
         }
-        if (technical.getKdj().getJ() > 90) {
-            analysis.append("   - KDJ J值超买，动能可能衰竭\n");
-        }
-        analysis.append(String.format("   - 综合技术评分 %d/100，需谨慎\n\n", technical.getTechnicalScore()));
 
-        // 基本面风险
         analysis.append("2️⃣ **基本面隐忧**\n");
         if (marketData.getPe() != null && marketData.getPe() > 40) {
             analysis.append(String.format("   - 市盈率 %.1f偏高，估值有压力\n", marketData.getPe()));
         }
-        analysis.append(String.format("   - 近期涨幅%.2f%%，获利回吐压力大\n", marketData.getChangePercent()));
-        if (!sentiment.getNegativeFactors().isEmpty()) {
+        if (marketData.getChangePercent() != null) {
+            analysis.append(String.format("   - 近期涨幅%.2f%%，获利回吐压力大\n", marketData.getChangePercent()));
+        }
+        if (sentiment != null && sentiment.getNegativeFactors() != null && !sentiment.getNegativeFactors().isEmpty()) {
             analysis.append("   - 主要风险:\n");
             sentiment.getNegativeFactors().stream()
                     .limit(2)
                     .forEach(f -> analysis.append("     • ").append(f).append("\n"));
         }
 
-        // 舆情风险
-        analysis.append("\n3️⃣ **市场情绪风险**\n");
-        if (sentiment.getMediaAttention() > 0.8) {
-            analysis.append("   - 媒体关注度过高，存在泡沫风险\n");
+        if (sentiment != null) {
+            analysis.append("\n3️⃣ **市场情绪风险**\n");
+            if (sentiment.getMediaAttention() != null && sentiment.getMediaAttention() > 0.8) {
+                analysis.append("   - 媒体关注度过高，存在泡沫风险\n");
+            }
         }
 
-        // 止损价
         double stopLoss = marketData.getCurrentPrice() * 0.93;
         double downside = (marketData.getCurrentPrice() - stopLoss) / marketData.getCurrentPrice() * 100;
 

@@ -6,7 +6,7 @@ spring:
       - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
       - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
 
-  # Redis配置
+  # Redis配置 - 禁用Redis（开发环境可选）
   data:
     redis:
       host: localhost
@@ -14,7 +14,10 @@ spring:
       password:
       database: 0
 
-# Spring AI - 开发环境不配置真实API Key
+  main:
+    allow-bean-definition-overriding: true
+
+# Spring AI - 开发环境
 spring.ai:
   openai:
     api-key: ${OPENAI_API_KEY:demo-key}
@@ -23,10 +26,6 @@ spring.ai:
     api-key: ${DEEPSEEK_API_KEY:demo-key}
   anthropic:
     api-key: ${ANTHROPIC_API_KEY:demo-key}
-
-  # 关闭某些starter的自动配置
-  main:
-    allow-bean-definition-overriding: true
 
 logging:
   level:

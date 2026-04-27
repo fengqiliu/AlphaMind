@@ -20,6 +20,13 @@ public class BullAgent extends BaseAgent {
     @Override
     public AnalysisReportDTO analyze(AnalysisReportDTO report) {
         logInfo("开始多头分析: " + report.getStockCode());
+        MarketDataDTO market = getContext("marketData");
+        TechnicalIndicatorsDTO tech = getContext("technicalIndicators");
+        SentimentDataDTO sentiment = getContext("sentimentData");
+
+        String argument = generateBullArgument(market, tech, sentiment);
+        // 存储辩论观点供Arbitrator使用
+        setContext("bullArgument", argument);
         return report;
     }
 
@@ -29,15 +36,19 @@ public class BullAgent extends BaseAgent {
         TechnicalIndicatorsDTO technical = getContext("technicalIndicators");
         SentimentDataDTO sentiment = getContext("sentimentData");
 
-        String analysis = generateBullishAnalysis(marketData, technical, sentiment);
+        String prompt = buildBullPrompt(marketData, technical, sentiment, userMessage.getContent());
+        String response = llmCall(getSystemPrompt(), prompt);
+        if (response == null) {
+            response = generateBullArgument(marketData, technical, sentiment);
+        }
 
         return ChatMessage.builder()
                 .id(java.util.UUID.randomUUID().toString())
                 .role("assistant")
-                .content(analysis)
+                .content(response)
                 .agentType(agentType)
                 .agentName(agentType.getName())
-                .modelUsed(getModelName())
+                .modelUsed(isLlmAvailable() ? "AI" : "template")
                 .timestamp(java.time.LocalDateTime.now())
                 .build();
     }
@@ -75,48 +86,63 @@ public class BullAgent extends BaseAgent {
         return 3;
     }
 
-    private String generateBullishAnalysis(
-            MarketDataDTO marketData,
-            TechnicalIndicatorsDTO technical,
-            SentimentDataDTO sentiment) {
+    private String buildBullPrompt(MarketDataDTO market, TechnicalIndicatorsDTO tech, SentimentDataDTO sentiment, String question) {
+        return String.format("""
+                股票: %s (%s), 当前价: ¥%.2f, 涨跌: %+.2f%%
+                技术评分: %d/100, 舆情评分: %.0f/100
+                用户问题: %s
+                请从多头立场给出3-5个核心看多论点和目标价。
+                """,
+                market != null ? market.getStockName() : "N/A",
+                market != null ? market.getStockCode() : "N/A",
+                market != null ? market.getCurrentPrice() : 0,
+                market != null && market.getChangePercent() != null ? market.getChangePercent() : 0,
+                tech != null ? tech.getTechnicalScore() : 0,
+                sentiment != null ? sentiment.getSentimentScore() * 100 : 0,
+                question);
+    }
+
+    private String generateBullArgument(MarketDataDTO marketData, TechnicalIndicatorsDTO technical, SentimentDataDTO sentiment) {
+        if (marketData == null) return "【多头观点】数据暂不可用，请先发起分析。";
 
         StringBuilder analysis = new StringBuilder();
         analysis.append("**【多头观点】坚定看好后市表现**\n\n");
-
         analysis.append("**核心看多逻辑**:\n\n");
 
-        // 技术面亮点
-        analysis.append("1️⃣ **技术面看多**\n");
-        TechnicalIndicatorsDTO.MacdDTO macd = technical.getMacd();
-        if (macd.getHistogram() > 0) {
-            analysis.append("   - MACD红柱持续，趋势向好\n");
+        if (technical != null) {
+            analysis.append("1️⃣ **技术面看多**\n");
+            TechnicalIndicatorsDTO.MacdDTO macd = technical.getMacd();
+            if (macd != null && macd.getHistogram() > 0) {
+                analysis.append("   - MACD红柱持续，趋势向好\n");
+            }
+            if (technical.getKdj() != null && technical.getKdj().getK() > technical.getKdj().getD()) {
+                analysis.append("   - KDJ金叉形成，短期动能充足\n");
+            }
+            analysis.append(String.format("   - 综合技术评分 %d/100\n\n", technical.getTechnicalScore()));
         }
-        if (technical.getKdj().getK() > technical.getKdj().getD()) {
-            analysis.append("   - KDJ金叉形成，短期动能充足\n");
-        }
-        analysis.append(String.format("   - 综合技术评分 %d/100\n\n", technical.getTechnicalScore()));
 
-        // 基本面亮点
         analysis.append("2️⃣ **基本面支撑**\n");
         analysis.append(String.format("   - 当前价格 ¥%.2f，估值合理\n", marketData.getCurrentPrice()));
         if (marketData.getPe() != null && marketData.getPe() < 30) {
             analysis.append(String.format("   - 市盈率 %.1f，具备估值优势\n", marketData.getPe()));
         }
-        analysis.append(String.format("   - 总市值 %.2f亿，流动性良好\n\n", marketData.getMarketCap() / 1e8));
-
-        // 舆情亮点
-        analysis.append("3️⃣ **市场情绪偏多**\n");
-        if (sentiment.getSentimentScore() > 0.5) {
-            analysis.append(String.format("   - 舆情评分 %.0f/100，机构看好\n", sentiment.getSentimentScore() * 100));
-        }
-        if (!sentiment.getPositiveFactors().isEmpty()) {
-            analysis.append("   - 主要利好:\n");
-            sentiment.getPositiveFactors().stream()
-                    .limit(2)
-                    .forEach(f -> analysis.append("     • ").append(f).append("\n"));
+        if (marketData.getMarketCap() != null) {
+            analysis.append(String.format("   - 总市值 %.2f亿，流动性良好\n\n", marketData.getMarketCap() / 1e8));
         }
 
-        // 目标价
+        if (sentiment != null) {
+            analysis.append("3️⃣ **市场情绪偏多**\n");
+            if (sentiment.getSentimentScore() > 0.5) {
+                analysis.append(String.format("   - 舆情评分 %.0f/100，机构看好\n", sentiment.getSentimentScore() * 100));
+            }
+            if (sentiment.getPositiveFactors() != null && !sentiment.getPositiveFactors().isEmpty()) {
+                analysis.append("   - 主要利好:\n");
+                sentiment.getPositiveFactors().stream()
+                        .limit(2)
+                        .forEach(f -> analysis.append("     • ").append(f).append("\n"));
+            }
+        }
+
         double targetPrice = marketData.getCurrentPrice() * 1.15;
         double upside = (targetPrice - marketData.getCurrentPrice()) / marketData.getCurrentPrice() * 100;
 

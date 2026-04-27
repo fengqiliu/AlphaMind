@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { StockSearch } from "@/components/common/StockSearch";
 import { Button } from "@/components/common/Button";
+import { getWatchlist, addToWatchlist, removeFromWatchlist } from "@/api/client";
 import type { StockSearchResult, WatchlistItem } from "@/types";
 import {
   Star,
@@ -17,53 +18,40 @@ import { cn, formatPercent, formatNumber } from "@/utils";
 export default function WatchlistPage() {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    setItems([
-      {
-        stockCode: "000858",
-        stockName: "五粮液",
-        addedAt: "2026-04-20",
-        currentPrice: 165.5,
-        change: 2.35,
-        changePercent: 1.44,
-      },
-      {
-        stockCode: "600519",
-        stockName: "贵州茅台",
-        addedAt: "2026-04-19",
-        currentPrice: 1680.0,
-        change: -15.5,
-        changePercent: -0.91,
-      },
-      {
-        stockCode: "000001",
-        stockName: "平安银行",
-        addedAt: "2026-04-18",
-        currentPrice: 12.35,
-        change: 0.15,
-        changePercent: 1.23,
-      },
-    ]);
+    setIsLoading(true);
+    getWatchlist()
+      .then(setItems)
+      .catch(() => setError("加载自选股失败"))
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const handleAddStock = (stock: StockSearchResult) => {
-    const newItem: WatchlistItem = {
-      stockCode: stock.code,
-      stockName: stock.name,
-      addedAt: new Date().toISOString(),
-      currentPrice: 100 + Math.random() * 50,
-      change: (Math.random() - 0.5) * 5,
-      changePercent: (Math.random() - 0.5) * 5,
-    };
-    setItems((prev) => [
-      ...prev.filter((i) => i.stockCode !== stock.code),
-      newItem,
-    ]);
+  const handleAddStock = async (stock: StockSearchResult) => {
+    try {
+      await addToWatchlist(stock.code);
+      const newItem: WatchlistItem = {
+        stockCode: stock.code,
+        stockName: stock.name,
+        addedAt: new Date().toISOString(),
+      };
+      setItems((prev) => [
+        ...prev.filter((i) => i.stockCode !== stock.code),
+        newItem,
+      ]);
+    } catch {
+      setError("添加失败，请稍后重试");
+    }
   };
 
-  const handleRemoveStock = (stockCode: string) => {
-    setItems((prev) => prev.filter((i) => i.stockCode !== stockCode));
+  const handleRemoveStock = async (stockCode: string) => {
+    try {
+      await removeFromWatchlist(stockCode);
+      setItems((prev) => prev.filter((i) => i.stockCode !== stockCode));
+    } catch {
+      setError("删除失败，请稍后重试");
+    }
   };
 
   return (

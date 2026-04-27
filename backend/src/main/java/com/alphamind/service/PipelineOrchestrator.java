@@ -46,43 +46,38 @@ public class PipelineOrchestrator {
 
         try {
             // 设置策略
-            strategy = strategy != null ? strategy : StrategyType.BALANCED;
+            final StrategyType finalStrategy = strategy != null ? strategy : StrategyType.BALANCED;
 
-            // Stage 1: Market Agent
+            // Stage 1: Market Agent - 采集行情数据
             emit(eventConsumer, AnalysisStage.MARKET, "正在采集行情数据...");
+            initializeAgentContext(marketAgent, report, finalStrategy);
             report = marketAgent.analyze(report);
-            initializeAgentContext(marketAgent, report, strategy);
-            report = technicalAgent.analyze(report);
-            initializeAgentContext(technicalAgent, report, strategy);
-            report = sentimentAgent.analyze(report);
-            initializeAgentContext(sentimentAgent, report, strategy);
+            emitData(eventConsumer, AgentType.MARKET, report.getMarketData());
 
-            // Stage 2: Technical Agent
+            // Stage 2: Technical Agent - 技术指标分析
             emit(eventConsumer, AnalysisStage.TECHNICAL, "正在进行技术分析...");
+            initializeAgentContext(technicalAgent, report, finalStrategy);
             report = technicalAgent.analyze(report);
+            emitData(eventConsumer, AgentType.TECHNICAL, report.getTechnicalIndicators());
 
-            // Stage 3: Sentiment Agent
-            emit(eventConsumer, AnalysisStage.SENTIMENT, "正在分析舆情...");
+            // Stage 3: Sentiment Agent - 舆情分析
+            emit(eventConsumer, AnalysisStage.SENTIMENT, "正在分析舆情数据...");
+            initializeAgentContext(sentimentAgent, report, finalStrategy);
             report = sentimentAgent.analyze(report);
+            emitData(eventConsumer, AgentType.SENTIMENT, report.getSentimentData());
 
-            // Stage 4: Portfolio Agent
+            // Stage 4: Portfolio Agent - 综合决策
             emit(eventConsumer, AnalysisStage.PORTFOLIO, "正在生成投资建议...");
+            initializeAgentContext(portfolioAgent, report, finalStrategy);
             report = portfolioAgent.analyze(report);
+            emitData(eventConsumer, AgentType.PORTFOLIO, report.getTradeSignal());
 
-            // Stage 5: Debate (optional)
+            // Stage 5: Debate (optional) - 多空辩论
             if (enableDebate) {
                 emit(eventConsumer, AnalysisStage.DEBATE, "正在进行多空辩论...");
-
-                // Initialize debate agents
                 initializeDebateAgents(report);
-
-                // Run debate
-                bullAgent.chat(ChatMessage.builder().content("分析").build());
-                bearAgent.chat(ChatMessage.builder().content("分析").build());
-                neutralAgent.chat(ChatMessage.builder().content("分析").build());
-
-                // Arbitrator decides
                 report = arbitratorAgent.analyze(report);
+                emitData(eventConsumer, AgentType.ARBITRATOR, report.getJudgment());
             }
 
             // Complete
@@ -100,7 +95,14 @@ public class PipelineOrchestrator {
         }
     }
 
+    private void emitData(Consumer<SSEEvent> consumer, AgentType agentType, Object data) {
+        if (consumer != null && data != null) {
+            consumer.accept(SSEEvent.dataEvent(agentType, data));
+        }
+    }
+
     private void initializeAgentContext(BaseAgent agent, AnalysisReportDTO report, StrategyType strategy) {
+        agent.clearContext();
         agent.setContext("stockCode", report.getStockCode());
         agent.setContext("stockName", report.getStockName());
         agent.setContext("strategy", strategy);

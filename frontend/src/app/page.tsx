@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useAnalysisStore } from "@/stores/analysis";
 import { StockSearch } from "@/components/common/StockSearch";
 import { Button } from "@/components/common/Button";
@@ -15,6 +15,7 @@ import { Play, Square, Loader2, TrendingUp, TrendingDown } from "lucide-react";
 
 export default function AnalysisPage() {
   const [strategy, setStrategy] = useState<StrategyType>(ST.BALANCED);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   const {
     currentStockCode,
@@ -36,89 +37,55 @@ export default function AnalysisPage() {
     setFinalSignal,
     setError,
     reset,
+    handleSSEEvent,
   } = useAnalysisStore();
 
   const handleStockSelect = (stock: StockSearchResult) => {
     setCurrentStock(stock.code, stock.name);
   };
 
-  const handleStartAnalysis = async () => {
+  const handleStartAnalysis = () => {
     if (!currentStockCode) return;
 
+    reset();
     setIsAnalyzing(true);
     setCurrentStage("START", "正在连接分析服务...");
 
-    const stages = [
-      { stage: "MARKET", message: "正在采集行情数据..." },
-      { stage: "TECHNICAL", message: "正在进行技术分析..." },
-      { stage: "SENTIMENT", message: "正在分析舆情..." },
-      { stage: "PORTFOLIO", message: "正在生成投资建议..." },
-      { stage: "DEBATE", message: "正在进行多空辩论..." },
-    ];
+    const url = `/api/v1/analysis/stream?stockCode=${encodeURIComponent(currentStockCode)}&strategy=${strategy}&enableDebate=true`;
+    const es = new EventSource(url);
+    eventSourceRef.current = es;
 
-    for (const s of stages) {
-      setCurrentStage(s.stage, s.message);
-      await new Promise((r) => setTimeout(r, 800));
-    }
-
-    setMarketData({
-      stockCode: currentStockCode,
-      stockName: currentStockName || currentStockCode,
-      currentPrice: 118.5,
-      change: 2.35,
-      changePercent: 2.02,
-      open: 116.2,
-      high: 119.8,
-      low: 115.5,
-      volume: 52000000,
-      amount: 610000000,
-      turnoverRate: 1.85,
-      pe: 28.5,
-      pb: 5.2,
-      marketCap: 458000000000,
-      updateTime: new Date().toISOString(),
+    const eventTypes = ["stage", "data", "complete", "error"];
+    eventTypes.forEach((type) => {
+      es.addEventListener(type, (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          // 确保 event 字段正确（有些后端直接在 data 中携带 event，也可能需要合并）
+          handleSSEEvent({ event: type as "stage" | "data" | "complete" | "error", ...data });
+          if (type === "complete" || type === "error") {
+            es.close();
+            eventSourceRef.current = null;
+            setIsAnalyzing(false);
+          }
+        } catch {
+          // ignore parse errors
+        }
+      });
     });
 
-    setTechnicalIndicators({
-      macd: { dif: 2.5, dea: 1.8, histogram: 0.7 },
-      rsi: { rsi6: 68.5, rsi12: 65.2, rsi24: 62.8 },
-      kdj: { k: 72.3, d: 68.5, j: 79.9 },
-      bollinger: { upper: 125, middle: 118, lower: 111 },
-      technicalScore: 68,
-    });
+    es.onerror = () => {
+      setError("连接分析服务失败，请检查后端是否启动");
+      setIsAnalyzing(false);
+      es.close();
+      eventSourceRef.current = null;
+    };
+  };
 
-    setFinalSignal({
-      type: "BUY",
-      entryPrice: 118.5,
-      targetPrice: 135.0,
-      stopLoss: 110.0,
-      holdingPeriodDays: 30,
-      rationale: "技术面MACD金叉，基本面业绩稳健，机构持仓增加",
-    });
-
-    setJudgment({
-      finalPosition: "BULLISH",
-      confidence: {
-        value: 0.75,
-        level: ConfidenceLevel.MEDIUM,
-        explanation: "多空双方均有支撑，建议中等仓位",
-      },
-      reasoning:
-        "技术面显示上升趋势，MACD形成金叉；基本面稳健，估值合理；舆情偏正面。综合评分较高，建议关注。",
-      voteBreakdown: { BULLISH: 6, NEUTRAL: 2, BEARISH: 2 },
-      riskWarnings: ["市场整体波动加大", "注意止损纪律"],
-      finalSignal: {
-        type: "BUY",
-        entryPrice: 118.5,
-        targetPrice: 135.0,
-        stopLoss: 110.0,
-        holdingPeriodDays: 30,
-        rationale: "建议买入，目标价135元",
-      },
-    });
-
+  const handleStopAnalysis = () => {
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
+    reset();
     setIsAnalyzing(false);
-    setCurrentStage("COMPLETE", "分析完成");
   };
 
   const isPositive = (marketData?.changePercent || 0) >= 0;
@@ -202,10 +169,7 @@ export default function AnalysisPage() {
               {isAnalyzing ? (
                 <Button
                   variant="destructive"
-                  onClick={() => {
-                    reset();
-                    setIsAnalyzing(false);
-                  }}
+                  onClick={handleStopAnalysis}
                   className="h-11 px-6 bg-[var(--bearish)] hover:bg-[var(--bearish)]/80 btn-glow"
                 >
                   <Square className="w-4 h-4" />
