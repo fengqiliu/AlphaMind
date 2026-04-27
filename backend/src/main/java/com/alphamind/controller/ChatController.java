@@ -2,21 +2,26 @@ package com.alphamind.controller;
 
 import com.alphamind.agent.*;
 import com.alphamind.model.dto.*;
+import com.alphamind.model.entity.ChatMessageEntity;
+import com.alphamind.model.entity.ChatSessionEntity;
 import com.alphamind.model.enums.AgentType;
+import com.alphamind.repository.ChatMessageRepository;
+import com.alphamind.repository.ChatSessionRepository;
 import com.alphamind.service.MemoryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 对话控制器 - 处理AI对话请求
@@ -30,6 +35,8 @@ public class ChatController {
 
     private final MemoryService memoryService;
     private final ObjectMapper objectMapper;
+    private final ChatSessionRepository chatSessionRepository;
+    private final ChatMessageRepository chatMessageRepository;
 
     // Agent注入
     private final MarketAgent marketAgent;
@@ -41,24 +48,35 @@ public class ChatController {
     private final NeutralAgent neutralAgent;
     private final ArbitratorAgent arbitratorAgent;
 
-    // 会话Agent上下文
-    private final Map<String, AgentContext> sessionContexts = new ConcurrentHashMap<>();
+    // 内存缓存 session 上下文（减少 DB 查询频率）
+    private final java.util.concurrent.ConcurrentHashMap<String, AgentContext> sessionContextCache = new java.util.concurrent.ConcurrentHashMap<>();
 
     /**
      * 创建新会话
      */
     @PostMapping("/session")
+    @Transactional
     public ApiResponse<Map<String, String>> createSession(
             @RequestParam(required = false) String stockCode,
             @RequestParam(required = false) String stockName) {
 
         String sessionId = UUID.randomUUID().toString();
+        String finalStockName = stockName != null ? stockName : stockCode;
+
+        // 持久化会话到 DB
+        ChatSessionEntity sessionEntity = ChatSessionEntity.builder()
+                .sessionId(sessionId)
+                .stockCode(stockCode)
+                .stockName(finalStockName)
+                .build();
+        chatSessionRepository.save(sessionEntity);
+
+        // 缓存上下文
         AgentContext context = new AgentContext();
         context.setSessionId(sessionId);
         context.setStockCode(stockCode);
-        context.setStockName(stockName != null ? stockName : stockCode);
-
-        sessionContexts.put(sessionId, context);
+        context.setStockName(finalStockName);
+        sessionContextCache.put(sessionId, context);
 
         log.info("创建新会话: sessionId={}, stockCode={}", sessionId, stockCode);
 
@@ -69,17 +87,18 @@ public class ChatController {
      * 发送消息
      */
     @PostMapping("/message")
+    @Transactional
     public ApiResponse<ChatMessage> sendMessage(
             @RequestParam String sessionId,
             @RequestParam @NotBlank String content,
             @RequestParam(required = false, defaultValue = "PORTFOLIO") AgentType agentType) {
 
-        AgentContext context = sessionContexts.get(sessionId);
+        AgentContext context = getOrLoadContext(sessionId);
         if (context == null) {
             return ApiResponse.error(404, "会话不存在");
         }
 
-        // 保存用户消息
+        // 保存用户消息（Redis + DB）
         ChatMessage userMessage = ChatMessage.builder()
                 .id(UUID.randomUUID().toString())
                 .role("user")
@@ -87,6 +106,7 @@ public class ChatController {
                 .timestamp(LocalDateTime.now())
                 .build();
         memoryService.saveMessage(sessionId, userMessage);
+        persistMessage(sessionId, userMessage, null);
 
         // 获取对应Agent
         BaseAgent agent = getAgent(agentType);
@@ -95,6 +115,10 @@ public class ChatController {
         // Agent处理
         ChatMessage response = agent.chat(userMessage);
         memoryService.saveMessage(sessionId, response);
+        persistMessage(sessionId, response, agentType.name());
+
+        // 更新会话活跃时间
+        chatSessionRepository.touchSession(sessionId, OffsetDateTime.now());
 
         log.info("会话消息: sessionId={}, agent={}", sessionId, agentType);
 
@@ -110,7 +134,7 @@ public class ChatController {
             @RequestParam @NotBlank String message,
             @RequestParam(required = false, defaultValue = "PORTFOLIO") AgentType agentType) {
 
-        AgentContext context = sessionContexts.get(sessionId);
+        AgentContext context = getOrLoadContext(sessionId);
         if (context == null) {
             return Flux.just("data: {\"error\": \"会话不存在\"}\n\n");
         }
@@ -123,6 +147,7 @@ public class ChatController {
                 .timestamp(LocalDateTime.now())
                 .build();
         memoryService.saveMessage(sessionId, userMessage);
+        persistMessage(sessionId, userMessage, null);
 
         return Flux.create(emitter -> {
             try {
@@ -136,6 +161,8 @@ public class ChatController {
                 // Agent处理
                 ChatMessage response = agent.chat(userMessage);
                 memoryService.saveMessage(sessionId, response);
+                persistMessage(sessionId, response, agentType.name());
+                chatSessionRepository.touchSession(sessionId, OffsetDateTime.now());
 
                 // 发送响应
                 String json = objectMapper.writeValueAsString(response);
@@ -166,11 +193,48 @@ public class ChatController {
      * 清除会话
      */
     @DeleteMapping("/session/{sessionId}")
+    @Transactional
     public ApiResponse<Void> clearSession(@PathVariable String sessionId) {
         memoryService.clearSession(sessionId);
-        sessionContexts.remove(sessionId);
+        sessionContextCache.remove(sessionId);
+        chatSessionRepository.deleteById(sessionId);
         log.info("清除会话: sessionId={}", sessionId);
         return ApiResponse.success(null);
+    }
+
+    /** 从缓存或 DB 加载会话上下文 */
+    private AgentContext getOrLoadContext(String sessionId) {
+        return sessionContextCache.computeIfAbsent(sessionId, id ->
+                chatSessionRepository.findById(id).map(entity -> {
+                    AgentContext ctx = new AgentContext();
+                    ctx.setSessionId(entity.getSessionId());
+                    ctx.setStockCode(entity.getStockCode());
+                    ctx.setStockName(entity.getStockName());
+                    return ctx;
+                }).orElse(null)
+        );
+    }
+
+    /** 持久化消息到 DB（非关键路径，失败不影响主流程）*/
+    private void persistMessage(String sessionId, ChatMessage msg, String agentTypeName) {
+        try {
+            chatSessionRepository.findById(sessionId).ifPresent(session -> {
+                ChatMessageEntity entity = ChatMessageEntity.builder()
+                        .id(msg.getId())
+                        .session(session)
+                        .role(msg.getRole())
+                        .content(msg.getContent())
+                        .agentType(agentTypeName)
+                        .agentName(msg.getAgentName())
+                        .createdAt(msg.getTimestamp() != null
+                                ? msg.getTimestamp().atZone(java.time.ZoneId.systemDefault()).toOffsetDateTime()
+                                : OffsetDateTime.now())
+                        .build();
+                chatMessageRepository.save(entity);
+            });
+        } catch (Exception e) {
+            log.warn("持久化消息失败（非致命）: sessionId={}, msgId={}", sessionId, msg.getId(), e);
+        }
     }
 
     private BaseAgent getAgent(AgentType type) {

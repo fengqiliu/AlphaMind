@@ -2,10 +2,13 @@ package com.alphamind.service;
 
 import com.alphamind.model.dto.StockSearchResult;
 import com.alphamind.model.dto.WatchlistItem;
+import com.alphamind.model.entity.WatchlistItemEntity;
+import com.alphamind.repository.WatchlistItemRepository;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -14,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class StockService {
 
     // 模拟股票数据库
@@ -104,8 +108,7 @@ public class StockService {
                 .currentPrice(price).changePercent(changePct).build());
     }
 
-    // 用户自选股存储
-    private final Map<String, Set<String>> userWatchlist = new ConcurrentHashMap<>();
+    private final WatchlistItemRepository watchlistItemRepository;
 
     /**
      * 搜索股票
@@ -139,17 +142,30 @@ public class StockService {
     /**
      * 添加自选股
      */
+    @Transactional
     public void addToWatchlist(String userId, String stockCode) {
-        userWatchlist.computeIfAbsent(userId, k -> new HashSet<>()).add(stockCode);
+        if (watchlistItemRepository.existsByUserIdAndStockCode(userId, stockCode)) {
+            log.info("用户 {} 的自选股 {} 已存在，跳过", userId, stockCode);
+            return;
+        }
+        String stockName = Optional.ofNullable(STOCK_DB.get(stockCode))
+                .map(StockSearchResult::getName).orElse(stockCode);
+        WatchlistItemEntity entity = WatchlistItemEntity.builder()
+                .userId(userId)
+                .stockCode(stockCode)
+                .stockName(stockName)
+                .build();
+        watchlistItemRepository.save(entity);
         log.info("用户 {} 添加自选股: {}", userId, stockCode);
     }
 
     /**
      * 移除自选股
      */
+    @Transactional
     public void removeFromWatchlist(String userId, String stockCode) {
-        if (userWatchlist.containsKey(userId)) {
-            userWatchlist.get(userId).remove(stockCode);
+        int deleted = watchlistItemRepository.deleteByUserIdAndStockCode(userId, stockCode);
+        if (deleted > 0) {
             log.info("用户 {} 移除自选股: {}", userId, stockCode);
         }
     }
@@ -157,31 +173,30 @@ public class StockService {
     /**
      * 获取用户自选股列表
      */
+    @Transactional(readOnly = true)
     public List<WatchlistItem> getWatchlist(String userId) {
-        Set<String> codes = userWatchlist.getOrDefault(userId, new HashSet<>());
-        List<WatchlistItem> items = new ArrayList<>();
-
-        for (String code : codes) {
-            StockSearchResult stock = STOCK_DB.get(code);
-            if (stock != null) {
-                items.add(WatchlistItem.builder()
-                        .stockCode(stock.getCode())
-                        .stockName(stock.getName())
-                        .addedAt(LocalDateTime.now().minusDays(new Random().nextInt(30)))
-                        .currentPrice(stock.getCurrentPrice())
-                        .change(stock.getCurrentPrice() * stock.getChangePercent() / 100)
-                        .changePercent(stock.getChangePercent())
-                        .build());
-            }
-        }
-
-        return items;
+        return watchlistItemRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .map(entity -> {
+                    StockSearchResult stock = STOCK_DB.get(entity.getStockCode());
+                    double price = stock != null ? stock.getCurrentPrice() : 0.0;
+                    double changePct = stock != null ? stock.getChangePercent() : 0.0;
+                    return WatchlistItem.builder()
+                            .stockCode(entity.getStockCode())
+                            .stockName(entity.getStockName())
+                            .addedAt(entity.getCreatedAt().toLocalDateTime())
+                            .currentPrice(price)
+                            .change(price * changePct / 100)
+                            .changePercent(changePct)
+                            .build();
+                })
+                .toList();
     }
 
     /**
      * 检查是否在自选股中
      */
+    @Transactional(readOnly = true)
     public boolean isInWatchlist(String userId, String stockCode) {
-        return userWatchlist.getOrDefault(userId, new HashSet<>()).contains(stockCode);
+        return watchlistItemRepository.existsByUserIdAndStockCode(userId, stockCode);
     }
 }

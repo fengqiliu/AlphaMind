@@ -1,20 +1,24 @@
 package com.alphamind.controller;
 
 import com.alphamind.model.dto.*;
+import com.alphamind.model.entity.AnalysisReportEntity;
 import com.alphamind.model.enums.StrategyType;
+import com.alphamind.repository.AnalysisReportRepository;
 import com.alphamind.service.PipelineOrchestrator;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
-import java.util.Deque;
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentLinkedDeque;
 
 /**
  * 分析控制器 - 处理股票分析请求，支持SSE流式响应
@@ -28,9 +32,8 @@ public class AnalysisController {
 
     private final PipelineOrchestrator pipelineOrchestrator;
     private final ObjectMapper objectMapper;
+    private final AnalysisReportRepository analysisReportRepository;
 
-    // 内存中的分析历史（最近50条）
-    private final Deque<AnalysisReportDTO> analysisHistory = new ConcurrentLinkedDeque<>();
     private static final int MAX_HISTORY = 50;
 
     /**
@@ -123,23 +126,77 @@ public class AnalysisController {
      * 分析历史记录
      */
     @GetMapping("/history")
+    @Transactional(readOnly = true)
     public ApiResponse<List<AnalysisReportDTO>> getHistory(
             @RequestParam(required = false) String stockCode,
             @RequestParam(required = false, defaultValue = "20") int limit) {
 
-        List<AnalysisReportDTO> history = analysisHistory.stream()
-                .filter(r -> stockCode == null || stockCode.equals(r.getStockCode()))
+        List<AnalysisReportEntity> entities = stockCode != null
+                ? analysisReportRepository.findByStockCodeOrderByCreatedAtDesc(stockCode)
+                : analysisReportRepository.findTop50ByOrderByCreatedAtDesc();
+
+        List<AnalysisReportDTO> history = entities.stream()
                 .limit(Math.min(limit, MAX_HISTORY))
+                .map(this::toDTO)
                 .toList();
 
         return ApiResponse.success(history);
     }
 
+    @Transactional
     private void saveToHistory(AnalysisReportDTO report) {
         if (report == null) return;
-        analysisHistory.addFirst(report);
-        while (analysisHistory.size() > MAX_HISTORY) {
-            analysisHistory.pollLast();
+        try {
+            AnalysisReportEntity entity = toEntity(report);
+            analysisReportRepository.save(entity);
+        } catch (Exception e) {
+            log.error("保存分析报告失败: id={}", report.getId(), e);
         }
+    }
+
+    private AnalysisReportEntity toEntity(AnalysisReportDTO dto) {
+        AnalysisReportEntity.AnalysisReportEntityBuilder builder = AnalysisReportEntity.builder()
+                .id(dto.getId())
+                .stockCode(dto.getStockCode())
+                .stockName(dto.getStockName() != null ? dto.getStockName() : dto.getStockCode())
+                .marketData(dto.getMarketData())
+                .technicalIndicators(dto.getTechnicalIndicators())
+                .sentimentData(dto.getSentimentData())
+                .judgment(dto.getJudgment());
+
+        if (dto.getFinalSignal() != null) {
+            builder.signalType(dto.getFinalSignal().name());
+        }
+        if (dto.getConfidence() != null) {
+            if (dto.getConfidence().getValue() != null) {
+                builder.confidenceValue(BigDecimal.valueOf(dto.getConfidence().getValue()));
+            }
+            if (dto.getConfidence().getLevel() != null) {
+                builder.confidenceLevel(dto.getConfidence().getLevel().name());
+            }
+        }
+        if (dto.getTradeSignal() != null) {
+            TradeSignalDTO ts = dto.getTradeSignal();
+            if (ts.getType() != null) builder.signalType(ts.getType().name());
+            if (ts.getEntryPrice() != null) builder.entryPrice(BigDecimal.valueOf(ts.getEntryPrice()));
+            if (ts.getTargetPrice() != null) builder.targetPrice(BigDecimal.valueOf(ts.getTargetPrice()));
+            if (ts.getStopLoss() != null) builder.stopLoss(BigDecimal.valueOf(ts.getStopLoss()));
+            builder.holdingDays(ts.getHoldingPeriodDays());
+            builder.rationale(ts.getRationale());
+        }
+        if (dto.getCreatedAt() != null) {
+            builder.createdAt(dto.getCreatedAt().atZone(ZoneId.systemDefault()).toOffsetDateTime());
+        }
+        return builder.build();
+    }
+
+    private AnalysisReportDTO toDTO(AnalysisReportEntity entity) {
+        return objectMapper.convertValue(
+                objectMapper.createObjectNode()
+                        .put("id", entity.getId())
+                        .put("stockCode", entity.getStockCode())
+                        .put("stockName", entity.getStockName()),
+                AnalysisReportDTO.class
+        );
     }
 }
