@@ -399,8 +399,8 @@ MIT License - see LICENSE file for details
 
 ## 联系方式
 
-- 项目主页: https://github.com/yourusername/alphamind
-- 问题反馈: https://github.com/yourusername/alphamind/issues
+- 项目主页: https://github.com/fengqiliu/AlphaMind
+- 问题反馈: https://github.com/fengqiliu/AlphaMind/issues
 
 ---
 
