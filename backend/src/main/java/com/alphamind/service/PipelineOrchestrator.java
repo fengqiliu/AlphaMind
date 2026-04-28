@@ -35,11 +35,14 @@ public class PipelineOrchestrator {
             String stockCode,
             String stockName,
             StrategyType strategy,
-            boolean enableDebate,
+            AnalysisMode mode,
             Consumer<SSEEvent> eventConsumer) {
 
-        log.info("开始流水线分析: stockCode={}, strategy={}, enableDebate={}",
-                stockCode, strategy, enableDebate);
+        final AnalysisMode effectiveMode = mode != null ? mode : AnalysisMode.DEBATE;
+        final boolean enableDebate = effectiveMode == AnalysisMode.DEBATE;
+
+        log.info("开始流水线分析: stockCode={}, strategy={}, mode={}, enableDebate={}",
+            stockCode, strategy, effectiveMode, enableDebate);
 
         AnalysisReportDTO report = AnalysisReportDTO.builder()
                 .id(UUID.randomUUID().toString())

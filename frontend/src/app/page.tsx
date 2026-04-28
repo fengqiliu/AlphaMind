@@ -8,13 +8,14 @@ import { KLineChart } from "@/components/chart/KLineChart";
 import { TechnicalIndicatorsPanel } from "@/components/chart/TechnicalIndicators";
 import { AnalysisResult } from "@/components/analysis/AnalysisResult";
 import { DebateResult } from "@/components/analysis/DebateResult";
-import type { StockSearchResult, StrategyType } from "@/types";
-import { StrategyType as ST, ConfidenceLevel } from "@/types";
+import type { AnalysisMode as AnalysisModeType, StockSearchResult, StrategyType } from "@/types";
+import { AnalysisMode, StrategyType as ST, ConfidenceLevel } from "@/types";
 import { formatDate } from "@/utils";
 import { Play, Square, Loader2, TrendingUp, TrendingDown } from "lucide-react";
 
 export default function AnalysisPage() {
   const [strategy, setStrategy] = useState<StrategyType>(ST.BALANCED);
+  const [analysisMode, setAnalysisMode] = useState<AnalysisModeType>(AnalysisMode.PIPELINE);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const {
@@ -51,7 +52,7 @@ export default function AnalysisPage() {
     setIsAnalyzing(true);
     setCurrentStage("START", "正在连接分析服务...");
 
-    const url = `/api/v1/analysis/stream?stockCode=${encodeURIComponent(currentStockCode)}&strategy=${strategy}&enableDebate=true`;
+    const url = `/api/v1/analysis/stream?stockCode=${encodeURIComponent(currentStockCode)}&strategy=${strategy}&mode=${analysisMode}`;
     const es = new EventSource(url);
     eventSourceRef.current = es;
 
@@ -181,6 +182,16 @@ export default function AnalysisPage() {
                 <option value={ST.CONSERVATIVE}>🎯 保守策略</option>
                 <option value={ST.BALANCED}>⚖️ 平衡策略</option>
                 <option value={ST.AGGRESSIVE}>🚀 激进策略</option>
+              </select>
+
+              {/* Analysis Mode Selector */}
+              <select
+                value={analysisMode}
+                onChange={(e) => setAnalysisMode(e.target.value as AnalysisModeType)}
+                className="h-11 px-4 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border)] text-sm font-mono focus:outline-none focus:border-[var(--accent)] transition-colors cursor-pointer"
+              >
+                <option value={AnalysisMode.PIPELINE}>🔄 流水线模式</option>
+                <option value={AnalysisMode.DEBATE}>⚔️ 辩论模式</option>
               </select>
 
               {/* Action Button */}
@@ -378,7 +389,7 @@ export default function AnalysisPage() {
       )}
 
       {/* Debate Results */}
-      {judgment && (
+      {analysisMode === AnalysisMode.DEBATE && judgment && (
         <div className="glass-card p-5 animate-enter delay-400">
           <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
             <span className="w-1.5 h-5 bg-[var(--accent)] rounded-full" />

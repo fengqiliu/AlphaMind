@@ -85,6 +85,12 @@ export enum StrategyType {
   BALANCED = "balanced",
 }
 
+// 分析模式
+export enum AnalysisMode {
+  PIPELINE = "pipeline",
+  DEBATE = "debate",
+}
+
 // K线数据
 export interface KLineData {
   dates: string[];

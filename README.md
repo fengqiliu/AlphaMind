@@ -431,8 +431,8 @@ MIT License
 
 ## 项目链接
 
-- GitHub: `https://github.com/fengqiliu/AlphaMind`
-- Issues: `https://github.com/fengqiliu/AlphaMind/issues`
+- GitHub: [https://github.com/fengqiliu/AlphaMind](https://github.com/fengqiliu/AlphaMind)
+- Issues: [https://github.com/fengqiliu/AlphaMind/issues](https://github.com/fengqiliu/AlphaMind/issues)
 
 ---
 

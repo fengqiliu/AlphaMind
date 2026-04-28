@@ -2,6 +2,7 @@ package com.alphamind.controller;
 
 import com.alphamind.model.dto.*;
 import com.alphamind.model.entity.AnalysisReportEntity;
+import com.alphamind.model.enums.AnalysisMode;
 import com.alphamind.model.enums.StrategyType;
 import com.alphamind.repository.AnalysisReportRepository;
 import com.alphamind.service.PipelineOrchestrator;
@@ -44,20 +45,23 @@ public class AnalysisController {
             @RequestParam String stockCode,
             @RequestParam(required = false) String stockName,
             @RequestParam(required = false, defaultValue = "BALANCED") StrategyType strategy,
-            @RequestParam(required = false, defaultValue = "true") Boolean enableDebate,
+            @RequestParam(required = false) String mode,
+            @RequestParam(required = false) Boolean enableDebate,
             @RequestParam(required = false) String sessionId) {
 
         String finalSessionId = sessionId != null ? sessionId : UUID.randomUUID().toString();
         final String finalStockName = stockName != null ? stockName : stockCode;
 
+        AnalysisMode resolvedMode = resolveMode(mode, enableDebate);
+
         log.info("收到分析请求: stockCode={}, stockName={}, strategy={}, enableDebate={}, sessionId={}",
-                stockCode, finalStockName, strategy, enableDebate, finalSessionId);
+            stockCode, finalStockName, strategy, resolvedMode == AnalysisMode.DEBATE, finalSessionId);
 
         return Flux.create(emitter -> {
             try {
                 // 执行分析
                 AnalysisReportDTO report = pipelineOrchestrator.execute(
-                        stockCode, finalStockName, strategy, enableDebate,
+                    stockCode, finalStockName, strategy, resolvedMode,
                         event -> {
                             try {
                                 String json = objectMapper.writeValueAsString(event);
@@ -110,7 +114,7 @@ public class AnalysisController {
                     request.getStockCode(),
                     request.getStockCode(), // 使用code作为name的默认值
                     request.getStrategy() != null ? request.getStrategy() : StrategyType.BALANCED,
-                    request.getEnableDebate() != null ? request.getEnableDebate() : true,
+                    resolveMode(request.getMode(), request.getEnableDebate()),
                     null // 同步模式不需要回调
             );
 
@@ -198,5 +202,29 @@ public class AnalysisController {
                         .put("stockName", entity.getStockName()),
                 AnalysisReportDTO.class
         );
+    }
+
+    /**
+     * mode 优先级高于 enableDebate。
+     * 为兼容旧调用：当两者都未传时，默认 DEBATE（与旧默认 enableDebate=true 一致）。
+     */
+    private AnalysisMode resolveMode(String mode, Boolean enableDebate) {
+        if (mode != null && !mode.isBlank()) {
+            return AnalysisMode.fromValue(mode);
+        }
+        if (enableDebate != null) {
+            return enableDebate ? AnalysisMode.DEBATE : AnalysisMode.PIPELINE;
+        }
+        return AnalysisMode.DEBATE;
+    }
+
+    private AnalysisMode resolveMode(AnalysisMode mode, Boolean enableDebate) {
+        if (mode != null) {
+            return mode;
+        }
+        if (enableDebate != null) {
+            return enableDebate ? AnalysisMode.DEBATE : AnalysisMode.PIPELINE;
+        }
+        return AnalysisMode.DEBATE;
     }
 }
