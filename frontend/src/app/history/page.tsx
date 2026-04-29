@@ -10,6 +10,7 @@ import {
   History,
   FileText,
   Download,
+  FileDown,
   ChevronRight,
   Loader2,
   ArrowUpRight,
@@ -17,6 +18,7 @@ import {
   Minus,
 } from "lucide-react";
 import { cn, formatDate } from "@/utils";
+import { downloadReportJson, downloadReportMarkdown } from "@/utils/reportExport";
 
 export default function HistoryPage() {
   const [reports, setReports] = useState<AnalysisReport[]>([]);
@@ -33,17 +35,14 @@ export default function HistoryPage() {
       .finally(() => setIsLoading(false));
   }, []);
 
-  const handleDownload = (e: React.MouseEvent, report: AnalysisReport) => {
+  const handleDownloadJson = (e: React.MouseEvent, report: AnalysisReport) => {
     e.stopPropagation();
-    const blob = new Blob([JSON.stringify(report, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${report.stockCode}_${report.stockName}_${formatDate(report.createdAt)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadReportJson(report);
+  };
+
+  const handleDownloadMarkdown = (e: React.MouseEvent, report: AnalysisReport) => {
+    e.stopPropagation();
+    downloadReportMarkdown(report);
   };
 
   const signalConfig = {
@@ -188,10 +187,20 @@ export default function HistoryPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={(e) => handleDownload(e, report)}
+                        onClick={(e) => handleDownloadJson(e, report)}
                         className="text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
+                        title="导出 JSON"
                       >
                         <Download className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={(e) => handleDownloadMarkdown(e, report)}
+                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
+                        title="导出 Markdown"
+                      >
+                        <FileDown className="w-4 h-4" />
                       </Button>
                       <ChevronRight className="w-5 h-5 text-[var(--text-muted)]" />
                     </div>

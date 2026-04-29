@@ -192,6 +192,25 @@ cd backend && mvn clean package
 cd frontend && npm run build && npm run start
 ```
 
+### 4. Docker Compose 一键部署
+
+```bash
+# 项目根目录
+docker compose up -d --build
+```
+
+服务端口：
+
+- 前端：`http://localhost:3000`
+- 后端：`http://localhost:8080`
+- PostgreSQL：`localhost:5432`
+- Redis：`localhost:6379`
+
+说明：
+- `docker-compose.yml` 已包含 `postgres + redis + backend + frontend`。
+- 前端容器通过 `BACKEND_API_ORIGIN=http://backend:8080` 访问后端，避免容器内 `localhost` 指向错误。
+- 如需启用真实模型，请在启动前导出 `OPENAI_API_KEY` / `DEEPSEEK_API_KEY` / `ANTHROPIC_API_KEY`。
+
 ---
 
 ## Agent 工作流
@@ -236,9 +255,11 @@ GET /api/v1/analysis/stream?stockCode=600519&strategy=balanced&enableDebate=fals
 | --- | --- | --- | --- |
 | `stockCode` | string | 是 | 股票代码 |
 | `strategy` | string | 否 | `CONSERVATIVE` / `BALANCED` / `AGGRESSIVE`（大小写均可） |
-| `enableDebate` | boolean | 否 | 是否启用辩论模式 |
-| `mode` | string | 否 | `PIPELINE` / `DEBATE`，优先级高于 `enableDebate` |
+| `enableDebate` | boolean | 否 | 是否启用辩论模式（兼容旧参数，优先级低于 `mode`） |
+| `mode` | string | 否 | `PIPELINE` / `DEBATE`，优先级最高 |
 | `sessionId` | string | 否 | 会话 ID |
+
+模式解析优先级：`mode` > `enableDebate` > `strategy` 默认模式（`AGGRESSIVE` 默认 `PIPELINE`，其余默认 `DEBATE`）。
 
 典型事件序列：
 
@@ -318,11 +339,15 @@ DELETE /api/v1/stocks/watchlist/{code}?userId=default
 
 ## 策略类型
 
-| 策略 | 枚举值 | 仓位 | 止损 |
-| --- | --- | --- | --- |
-| 保守 | `CONSERVATIVE` | 30% | -5% |
-| 平衡 | `BALANCED` | 50% | -7% |
-| 激进 | `AGGRESSIVE` | 80% | -10% |
+| 策略 | 枚举值 | 仓位 | 止损 | 持仓周期 | 买入阈值 | 默认模式 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 保守 | `CONSERVATIVE` | 30% | -5% | 45天 | 75% | `DEBATE` |
+| 平衡 | `BALANCED` | 50% | -7% | 30天 | 65% | `DEBATE` |
+| 激进 | `AGGRESSIVE` | 80% | -10% | 15天 | 55% | `PIPELINE` |
+
+策略系统会在 `PortfolioAgent` 中统一生效：
+- 根据策略自动应用止损比例与持仓周期
+- 当买入信号的置信度低于策略阈值时，自动降级为 `HOLD`
 
 ---
 

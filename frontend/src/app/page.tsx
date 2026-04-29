@@ -8,10 +8,32 @@ import { KLineChart } from "@/components/chart/KLineChart";
 import { TechnicalIndicatorsPanel } from "@/components/chart/TechnicalIndicators";
 import { AnalysisResult } from "@/components/analysis/AnalysisResult";
 import { DebateResult } from "@/components/analysis/DebateResult";
-import type { AnalysisMode as AnalysisModeType, StockSearchResult, StrategyType } from "@/types";
-import { AnalysisMode, StrategyType as ST, ConfidenceLevel } from "@/types";
+import type {
+  AnalysisMode as AnalysisModeType,
+  AnalysisReport,
+  StockSearchResult,
+  StrategyType,
+} from "@/types";
+import {
+  AnalysisMode,
+  StrategyType as ST,
+  ConfidenceLevel,
+  DebatePosition,
+} from "@/types";
 import { formatDate } from "@/utils";
-import { Play, Square, Loader2, TrendingUp, TrendingDown, ThumbsUp, ThumbsDown, Newspaper } from "lucide-react";
+import { downloadReportJson, downloadReportMarkdown } from "@/utils/reportExport";
+import {
+  Play,
+  Square,
+  Loader2,
+  TrendingUp,
+  TrendingDown,
+  ThumbsUp,
+  ThumbsDown,
+  Newspaper,
+  Download,
+  FileDown,
+} from "lucide-react";
 
 export default function AnalysisPage() {
   const [strategy, setStrategy] = useState<StrategyType>(ST.BALANCED);
@@ -115,6 +137,47 @@ export default function AnalysisPage() {
   };
 
   const isPositive = (marketData?.changePercent || 0) >= 0;
+
+  const exportableReport: AnalysisReport | null =
+    currentStockCode &&
+    currentStockName &&
+    marketData &&
+    technicalIndicators &&
+    sentimentData &&
+    finalSignal
+      ? {
+          id: crypto.randomUUID(),
+          stockCode: currentStockCode,
+          stockName: currentStockName,
+          finalSignal: finalSignal.type,
+          confidence:
+            judgment?.confidence || {
+              value: 0.65,
+              level: ConfidenceLevel.MEDIUM,
+            },
+          tradeSignal: finalSignal,
+          marketData,
+          technicalIndicators,
+          sentimentData,
+          judgment: judgment || {
+            finalPosition: DebatePosition.NEUTRAL,
+            confidence: {
+              value: 0.65,
+              level: ConfidenceLevel.MEDIUM,
+            },
+            reasoning: "未启用辩论模式，使用流水线综合结论。",
+            voteBreakdown: {
+              [DebatePosition.BULLISH]: 0,
+              [DebatePosition.BEARISH]: 0,
+              [DebatePosition.NEUTRAL]: 1,
+            },
+            riskWarnings: [],
+            finalSignal,
+          },
+          debateViews: debateViews ?? undefined,
+          createdAt: new Date().toISOString(),
+        }
+      : null;
 
   return (
     <div className="p-6 space-y-6">
@@ -451,10 +514,34 @@ export default function AnalysisPage() {
       {/* Analysis Results */}
       {finalSignal && (
         <div className="glass-card p-5 animate-enter delay-300">
-          <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
-            <span className="w-1.5 h-5 bg-[var(--bullish)] rounded-full" />
-            分析结果
-          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold flex items-center gap-2">
+              <span className="w-1.5 h-5 bg-[var(--bullish)] rounded-full" />
+              分析结果
+            </h2>
+            {exportableReport && (
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-[var(--border)]"
+                  onClick={() => downloadReportJson(exportableReport)}
+                >
+                  <Download className="w-4 h-4" />
+                  导出JSON
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-[var(--border)]"
+                  onClick={() => downloadReportMarkdown(exportableReport)}
+                >
+                  <FileDown className="w-4 h-4" />
+                  导出Markdown
+                </Button>
+              </div>
+            )}
+          </div>
           <AnalysisResult
             signal={finalSignal}
             confidence={

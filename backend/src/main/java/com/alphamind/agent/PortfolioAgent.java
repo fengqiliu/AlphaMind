@@ -2,6 +2,9 @@ package com.alphamind.agent;
 
 import com.alphamind.model.dto.*;
 import com.alphamind.model.enums.*;
+import com.alphamind.strategy.StrategyProfile;
+import com.alphamind.strategy.StrategyRegistry;
+import com.alphamind.strategy.StrategySignalPlanner;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -12,8 +15,13 @@ import org.springframework.stereotype.Component;
 @Component
 public class PortfolioAgent extends BaseAgent {
 
-    public PortfolioAgent() {
+    private final StrategyRegistry strategyRegistry;
+    private final StrategySignalPlanner strategySignalPlanner;
+
+    public PortfolioAgent(StrategyRegistry strategyRegistry, StrategySignalPlanner strategySignalPlanner) {
         super(AgentType.PORTFOLIO);
+        this.strategyRegistry = strategyRegistry;
+        this.strategySignalPlanner = strategySignalPlanner;
     }
 
     @Override
@@ -24,15 +32,22 @@ public class PortfolioAgent extends BaseAgent {
             MarketDataDTO marketData = getContext("marketData");
             TechnicalIndicatorsDTO technicalIndicators = getContext("technicalIndicators");
             SentimentDataDTO sentimentData = getContext("sentimentData");
-            StrategyType strategy = getContext("strategy", StrategyType.BALANCED);
+            StrategyType strategyType = getContext("strategy", StrategyType.BALANCED);
+            StrategyProfile strategy = strategyRegistry.resolve(strategyType);
 
             if (marketData == null || technicalIndicators == null || sentimentData == null) {
                 throw new RuntimeException("缺少必要数据");
             }
 
-            // 生成交易信号
-            TradeSignalDTO tradeSignal = generateTradeSignal(
-                    marketData, technicalIndicators, sentimentData, strategy);
+            // 先生成置信度，再由策略生成交易信号
+            ConfidenceDTO confidence = calculateConfidence(technicalIndicators, sentimentData, strategy);
+            TradeSignalDTO tradeSignal = strategySignalPlanner.plan(
+                    marketData.getCurrentPrice(),
+                    technicalIndicators.getTechnicalScore(),
+                    sentimentData.getSentimentScore(),
+                    confidence.getValue(),
+                    strategy
+            );
 
             // 用LLM增强投资理由
             String aiRationale = generateAiRationale(marketData, technicalIndicators, sentimentData, strategy, tradeSignal);
@@ -42,10 +57,6 @@ public class PortfolioAgent extends BaseAgent {
 
             report.setTradeSignal(tradeSignal);
             setContext("tradeSignal", tradeSignal);
-
-            // 生成置信度
-            ConfidenceDTO confidence = calculateConfidence(
-                    technicalIndicators, sentimentData, strategy);
 
             report.setConfidence(confidence);
             setContext("confidence", confidence);
@@ -120,7 +131,7 @@ public class PortfolioAgent extends BaseAgent {
     }
 
     private String generateAiRationale(MarketDataDTO market, TechnicalIndicatorsDTO tech,
-                                        SentimentDataDTO sentiment, StrategyType strategy, TradeSignalDTO signal) {
+                                        SentimentDataDTO sentiment, StrategyProfile strategy, TradeSignalDTO signal) {
         String prompt = String.format("""
                 综合分析数据如下：
                 - 股票: %s (%s) 当前价: ¥%.2f 涨跌: %+.2f%%
@@ -133,7 +144,7 @@ public class PortfolioAgent extends BaseAgent {
                 market.getStockName(), market.getStockCode(),
                 market.getCurrentPrice(), market.getChangePercent() != null ? market.getChangePercent() : 0,
                 tech.getTechnicalScore(), sentiment.getSentimentScore() * 100,
-                strategy.name(), signal.getType().getLabel(),
+                strategy.getLabel(), signal.getType().getLabel(),
                 signal.getTargetPrice(), signal.getStopLoss());
         return llmCall(getSystemPrompt(), prompt);
     }
@@ -177,70 +188,10 @@ public class PortfolioAgent extends BaseAgent {
                 .build();
     }
 
-    private TradeSignalDTO generateTradeSignal(
-            MarketDataDTO marketData,
-            TechnicalIndicatorsDTO technicalIndicators,
-            SentimentDataDTO sentimentData,
-            StrategyType strategy) {
-
-        double currentPrice = marketData.getCurrentPrice();
-        int techScore = technicalIndicators.getTechnicalScore();
-        double sentimentScore = sentimentData.getSentimentScore();
-
-        // 计算综合评分
-        double compositeScore = techScore * 0.5 + sentimentScore * 50 * 0.5;
-
-        SignalType signalType;
-        double targetRatio;
-        double stopLossRatio;
-        int holdingDays;
-        String rationale;
-
-        if (compositeScore >= 70) {
-            signalType = SignalType.BUY;
-            targetRatio = 0.10 + (compositeScore - 70) / 100;
-            rationale = "技术面与技术指标形成共振，舆情偏正面，建议积极布局。";
-        } else if (compositeScore >= 50) {
-            signalType = SignalType.HOLD;
-            targetRatio = 0.05;
-            rationale = "技术面与舆情中性，建议观望等待更好买点。";
-        } else {
-            signalType = SignalType.SELL;
-            targetRatio = -0.05;
-            rationale = "技术面走弱，舆情偏负面，建议减仓或止损。";
-        }
-
-        // 根据策略调整止损比例
-        switch (strategy) {
-            case CONSERVATIVE -> stopLossRatio = 0.05;
-            case AGGRESSIVE -> stopLossRatio = 0.10;
-            default -> stopLossRatio = 0.07;
-        }
-
-        // 根据策略调整持仓周期
-        switch (strategy) {
-            case CONSERVATIVE -> holdingDays = 45;
-            case AGGRESSIVE -> holdingDays = 15;
-            default -> holdingDays = 30;
-        }
-
-        double targetPrice = currentPrice * (1 + targetRatio);
-        double stopLossPrice = currentPrice * (1 - stopLossRatio);
-
-        return TradeSignalDTO.builder()
-                .type(signalType)
-                .entryPrice(currentPrice)
-                .targetPrice(Math.round(targetPrice * 100) / 100.0)
-                .stopLoss(Math.round(stopLossPrice * 100) / 100.0)
-                .holdingPeriodDays(holdingDays)
-                .rationale(rationale)
-                .build();
-    }
-
     private ConfidenceDTO calculateConfidence(
             TechnicalIndicatorsDTO technicalIndicators,
             SentimentDataDTO sentimentData,
-            StrategyType strategy) {
+            StrategyProfile strategy) {
 
         double techScore = technicalIndicators.getTechnicalScore();
         double sentimentScore = sentimentData.getSentimentScore();

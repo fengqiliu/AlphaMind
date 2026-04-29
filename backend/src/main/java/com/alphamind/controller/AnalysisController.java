@@ -6,6 +6,7 @@ import com.alphamind.model.enums.AnalysisMode;
 import com.alphamind.model.enums.StrategyType;
 import com.alphamind.repository.AnalysisReportRepository;
 import com.alphamind.service.PipelineOrchestrator;
+import com.alphamind.strategy.StrategyModeResolver;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,7 @@ public class AnalysisController {
     private final PipelineOrchestrator pipelineOrchestrator;
     private final ObjectMapper objectMapper;
     private final AnalysisReportRepository analysisReportRepository;
+    private final StrategyModeResolver strategyModeResolver;
 
     private static final int MAX_HISTORY = 50;
 
@@ -51,7 +53,7 @@ public class AnalysisController {
         String finalSessionId = sessionId != null ? sessionId : UUID.randomUUID().toString();
         final String finalStockName = stockName != null ? stockName : stockCode;
 
-        AnalysisMode resolvedMode = resolveMode(mode, enableDebate);
+        AnalysisMode resolvedMode = resolveMode(mode, enableDebate, strategy);
 
         log.info("收到分析请求: stockCode={}, stockName={}, strategy={}, enableDebate={}, sessionId={}",
             stockCode, finalStockName, strategy, resolvedMode == AnalysisMode.DEBATE, finalSessionId);
@@ -113,7 +115,8 @@ public class AnalysisController {
                     request.getStockCode(),
                     request.getStockCode(), // 使用code作为name的默认值
                     request.getStrategy() != null ? request.getStrategy() : StrategyType.BALANCED,
-                    resolveMode(request.getMode(), request.getEnableDebate()),
+                    resolveMode(request.getMode(), request.getEnableDebate(),
+                            request.getStrategy() != null ? request.getStrategy() : StrategyType.BALANCED),
                     null // 同步模式不需要回调
             );
 
@@ -251,23 +254,14 @@ public class AnalysisController {
      * mode 优先级高于 enableDebate。
      * 为兼容旧调用：当两者都未传时，默认 DEBATE（与旧默认 enableDebate=true 一致）。
      */
-    private AnalysisMode resolveMode(String mode, Boolean enableDebate) {
+    private AnalysisMode resolveMode(String mode, Boolean enableDebate, StrategyType strategy) {
         if (mode != null && !mode.isBlank()) {
             return AnalysisMode.fromValue(mode);
         }
-        if (enableDebate != null) {
-            return enableDebate ? AnalysisMode.DEBATE : AnalysisMode.PIPELINE;
-        }
-        return AnalysisMode.DEBATE;
+        return strategyModeResolver.resolve(null, enableDebate, strategy);
     }
 
-    private AnalysisMode resolveMode(AnalysisMode mode, Boolean enableDebate) {
-        if (mode != null) {
-            return mode;
-        }
-        if (enableDebate != null) {
-            return enableDebate ? AnalysisMode.DEBATE : AnalysisMode.PIPELINE;
-        }
-        return AnalysisMode.DEBATE;
+    private AnalysisMode resolveMode(AnalysisMode mode, Boolean enableDebate, StrategyType strategy) {
+        return strategyModeResolver.resolve(mode, enableDebate, strategy);
     }
 }
