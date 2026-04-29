@@ -27,7 +27,7 @@ interface ChatState {
   reset: () => void;
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>((set) => ({
   sessionId: null,
   currentStockCode: null,
   messages: [],

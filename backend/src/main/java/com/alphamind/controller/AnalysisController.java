@@ -28,7 +28,6 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/analysis")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class AnalysisController {
 
     private final PipelineOrchestrator pipelineOrchestrator;
@@ -147,7 +146,6 @@ public class AnalysisController {
         return ApiResponse.success(history);
     }
 
-    @Transactional
     private void saveToHistory(AnalysisReportDTO report) {
         if (report == null) return;
         try {
@@ -195,13 +193,58 @@ public class AnalysisController {
     }
 
     private AnalysisReportDTO toDTO(AnalysisReportEntity entity) {
-        return objectMapper.convertValue(
-                objectMapper.createObjectNode()
-                        .put("id", entity.getId())
-                        .put("stockCode", entity.getStockCode())
-                        .put("stockName", entity.getStockName()),
-                AnalysisReportDTO.class
-        );
+        AnalysisReportDTO dto = new AnalysisReportDTO();
+        dto.setId(entity.getId());
+        dto.setStockCode(entity.getStockCode());
+        dto.setStockName(entity.getStockName());
+
+        // 还原 jsonb 字段
+        if (entity.getMarketData() != null) {
+            dto.setMarketData(objectMapper.convertValue(entity.getMarketData(), MarketDataDTO.class));
+        }
+        if (entity.getTechnicalIndicators() != null) {
+            dto.setTechnicalIndicators(objectMapper.convertValue(entity.getTechnicalIndicators(), TechnicalIndicatorsDTO.class));
+        }
+        if (entity.getSentimentData() != null) {
+            dto.setSentimentData(objectMapper.convertValue(entity.getSentimentData(), SentimentDataDTO.class));
+        }
+        if (entity.getJudgment() != null) {
+            dto.setJudgment(objectMapper.convertValue(entity.getJudgment(), JudgmentDTO.class));
+        }
+
+        // 还原交易信号
+        if (entity.getEntryPrice() != null || entity.getTargetPrice() != null) {
+            TradeSignalDTO ts = new TradeSignalDTO();
+            if (entity.getSignalType() != null) {
+                try { ts.setType(com.alphamind.model.enums.SignalType.valueOf(entity.getSignalType())); } catch (Exception ignored) {}
+            }
+            if (entity.getEntryPrice() != null) ts.setEntryPrice(entity.getEntryPrice().doubleValue());
+            if (entity.getTargetPrice() != null) ts.setTargetPrice(entity.getTargetPrice().doubleValue());
+            if (entity.getStopLoss() != null) ts.setStopLoss(entity.getStopLoss().doubleValue());
+            if (entity.getHoldingDays() != null) ts.setHoldingPeriodDays(entity.getHoldingDays());
+            ts.setRationale(entity.getRationale());
+            dto.setTradeSignal(ts);
+        }
+
+        // 还原 finalSignal 枚举
+        if (entity.getSignalType() != null) {
+            try { dto.setFinalSignal(com.alphamind.model.enums.SignalType.valueOf(entity.getSignalType())); } catch (Exception ignored) {}
+        }
+
+        // 还原置信度
+        if (entity.getConfidenceValue() != null || entity.getConfidenceLevel() != null) {
+            ConfidenceDTO confidence = new ConfidenceDTO();
+            if (entity.getConfidenceValue() != null) confidence.setValue(entity.getConfidenceValue().doubleValue());
+            if (entity.getConfidenceLevel() != null) {
+                try { confidence.setLevel(com.alphamind.model.enums.ConfidenceLevel.valueOf(entity.getConfidenceLevel())); } catch (Exception ignored) {}
+            }
+            dto.setConfidence(confidence);
+        }
+
+        if (entity.getCreatedAt() != null) {
+            dto.setCreatedAt(entity.getCreatedAt().toLocalDateTime());
+        }
+        return dto;
     }
 
     /**

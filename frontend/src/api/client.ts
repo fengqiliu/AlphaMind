@@ -4,7 +4,6 @@ import type {
   WatchlistItem,
   AnalysisReport,
   ChatMessage,
-  SSEEvent,
 } from "@/types";
 
 const api = axios.create({
@@ -67,17 +66,6 @@ export const getChatMessages = async (
 ): Promise<ChatMessage[]> => {
   const { data } = await api.get(`/chat/history/${encodeURIComponent(sessionId)}`);
   return data.data;
-};
-
-export const exportReport = async (
-  reportId: string,
-  format: "json" | "pdf" | "markdown",
-): Promise<Blob> => {
-  const { data } = await api.get(`/analysis/export/${reportId}`, {
-    params: { format },
-    responseType: "blob",
-  });
-  return data;
 };
 
 export default api;

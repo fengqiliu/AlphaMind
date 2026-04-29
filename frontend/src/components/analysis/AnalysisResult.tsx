@@ -1,6 +1,6 @@
 "use client";
 
-import { cn, formatNumber, formatPercent, getChangeColor } from "@/utils";
+import { cn } from "@/utils";
 import type { TradeSignal, ConfidenceInterval } from "@/types";
 import { SignalType } from "@/types";
 import { ConfidenceBar } from "@/components/common/ConfidenceBar";

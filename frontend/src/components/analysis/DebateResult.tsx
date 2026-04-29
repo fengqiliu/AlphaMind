@@ -104,17 +104,17 @@ export function DebateResult({ judgment, className }: DebateResultProps) {
         <div className="flex gap-3">
           <VoteBar
             position={DebatePosition.BULLISH}
-            votes={judgment.voteBreakdown[DebatePosition.BULLISH]}
+            votes={judgment.voteBreakdown[DebatePosition.BULLISH] ?? 0}
             total={10}
           />
           <VoteBar
             position={DebatePosition.NEUTRAL}
-            votes={judgment.voteBreakdown[DebatePosition.NEUTRAL]}
+            votes={judgment.voteBreakdown[DebatePosition.NEUTRAL] ?? 0}
             total={10}
           />
           <VoteBar
             position={DebatePosition.BEARISH}
-            votes={judgment.voteBreakdown[DebatePosition.BEARISH]}
+            votes={judgment.voteBreakdown[DebatePosition.BEARISH] ?? 0}
             total={10}
           />
         </div>

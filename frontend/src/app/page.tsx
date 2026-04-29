@@ -11,7 +11,7 @@ import { DebateResult } from "@/components/analysis/DebateResult";
 import type { AnalysisMode as AnalysisModeType, StockSearchResult, StrategyType } from "@/types";
 import { AnalysisMode, StrategyType as ST, ConfidenceLevel } from "@/types";
 import { formatDate } from "@/utils";
-import { Play, Square, Loader2, TrendingUp, TrendingDown } from "lucide-react";
+import { Play, Square, Loader2, TrendingUp, TrendingDown, ThumbsUp, ThumbsDown, Newspaper } from "lucide-react";
 
 export default function AnalysisPage() {
   const [strategy, setStrategy] = useState<StrategyType>(ST.BALANCED);
@@ -26,6 +26,7 @@ export default function AnalysisPage() {
     loadingMessage,
     marketData,
     technicalIndicators,
+    sentimentData,
     judgment,
     finalSignal,
     error,
@@ -34,6 +35,7 @@ export default function AnalysisPage() {
     setCurrentStage,
     setMarketData,
     setTechnicalIndicators,
+    setSentimentData,
     setJudgment,
     setFinalSignal,
     setError,
@@ -81,6 +83,7 @@ export default function AnalysisPage() {
         if (report) {
           if (report.marketData) setMarketData(report.marketData);
           if (report.technicalIndicators) setTechnicalIndicators(report.technicalIndicators);
+          if (report.sentimentData) setSentimentData(report.sentimentData);
           if (report.tradeSignal) setFinalSignal(report.tradeSignal);
           if (report.judgment) setJudgment(report.judgment);
         }
@@ -324,6 +327,75 @@ export default function AnalysisPage() {
             <MarketStat label="市盈率" value={marketData.pe} />
             <MarketStat label="市净率" value={marketData.pb} />
             <MarketStat label="52周高" value={marketData.high} />
+          </div>
+        </div>
+      )}
+
+      {/* 舆情分析 */}
+      {sentimentData && (
+        <div className="glass-card p-5 animate-enter delay-250">
+          <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+            <span className="w-1.5 h-5 bg-[var(--neutral)] rounded-full" />
+            舆情分析
+          </h2>
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-4 p-3 bg-[var(--bg-tertiary)] rounded-xl">
+              <div className="flex items-center gap-2">
+                <Newspaper className="w-4 h-4 text-[var(--text-muted)]" />
+                <span className="text-xs font-mono text-[var(--text-muted)]">综合评分</span>
+              </div>
+              <div className="text-2xl font-bold font-mono">
+                {Math.round(sentimentData.sentimentScore * 100)}
+                <span className="text-sm font-normal text-[var(--text-muted)]">/100</span>
+              </div>
+              <span className="ml-auto text-sm font-mono text-[var(--text-secondary)]">
+                {sentimentData.sentimentTrend}
+              </span>
+              <span className="text-xs font-mono text-[var(--text-muted)]">
+                媒体关注度 {Math.round(sentimentData.mediaAttention * 100)}%
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {sentimentData.positiveFactors?.length > 0 && (
+                <div>
+                  <div className="text-xs font-mono text-[var(--bullish)] mb-2 flex items-center gap-1">
+                    <ThumbsUp className="w-3 h-3" />
+                    利好因素
+                  </div>
+                  <ul className="space-y-1">
+                    {sentimentData.positiveFactors.map((f, i) => (
+                      <li key={i} className="text-sm text-[var(--text-secondary)] flex gap-2">
+                        <span className="text-[var(--bullish)] shrink-0">+</span>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {sentimentData.negativeFactors?.length > 0 && (
+                <div>
+                  <div className="text-xs font-mono text-[var(--bearish)] mb-2 flex items-center gap-1">
+                    <ThumbsDown className="w-3 h-3" />
+                    风险因素
+                  </div>
+                  <ul className="space-y-1">
+                    {sentimentData.negativeFactors.map((f, i) => (
+                      <li key={i} className="text-sm text-[var(--text-secondary)] flex gap-2">
+                        <span className="text-[var(--bearish)] shrink-0">-</span>
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {sentimentData.analysisSummary && (
+              <p className="text-sm text-[var(--text-muted)] font-mono border-t border-[var(--border)] pt-3 leading-relaxed">
+                {sentimentData.analysisSummary}
+              </p>
+            )}
           </div>
         </div>
       )}

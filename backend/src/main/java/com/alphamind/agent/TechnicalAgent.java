@@ -157,59 +157,164 @@ public class TechnicalAgent extends BaseAgent {
     }
 
     /**
-     * 计算技术指标（模拟实现 - TODO: 接入真实历史K线数据计算）
-     * 根据价格和涨跌幅动态计算，使指标更有参考意义
+     * 从 MarketAgent 提供的 K 线数据计算技术指标
+     * MACD: EMA12/EMA26 → DIF, EMA9(DIF) → DEA, 柱 = (DIF-DEA)*2
+     * RSI:  Wilder 平滑法 RSI(6/12/24)
+     * KDJ:  9 日最高/最低 → RSV → K/D/J
+     * 布林带: MA20 ± 2σ
      */
     private TechnicalIndicatorsDTO calculateTechnicalIndicators(MarketDataDTO marketData) {
+        java.util.List<double[]> klines = marketData.getKlines();
         double price = marketData.getCurrentPrice();
-        double changePct = marketData.getChangePercent() != null ? marketData.getChangePercent() : 0;
 
-        // 根据近期走势动态调整指标值
-        double macdDif   = 0.5 + changePct * 0.3 + (Math.random() - 0.5) * 0.5;
-        double macdDea   = macdDif * 0.7;
-        double macdHist  = (macdDif - macdDea) * 2;
+        // 从 klines 提取 close / high / low（格式：[open, close, low, high]）
+        double[] closes, highs, lows;
+        if (klines != null && klines.size() >= 26) {
+            int n = klines.size();
+            closes = new double[n];
+            highs  = new double[n];
+            lows   = new double[n];
+            for (int i = 0; i < n; i++) {
+                closes[i] = klines.get(i)[1];
+                lows[i]   = klines.get(i)[2];
+                highs[i]  = klines.get(i)[3];
+            }
+        } else {
+            // K 线数据不足时构造近似序列（兜底）
+            closes = new double[60];
+            highs  = new double[60];
+            lows   = new double[60];
+            double cp = price;
+            for (int i = 59; i >= 0; i--) {
+                closes[i] = cp;
+                highs[i]  = cp * 1.01;
+                lows[i]   = cp * 0.99;
+                cp /= 1.001;
+            }
+        }
 
-        double rsi12 = 50 + changePct * 3 + (Math.random() - 0.5) * 10;
-        rsi12 = Math.max(10, Math.min(90, rsi12));
-        double rsi6  = rsi12 + (Math.random() - 0.5) * 8;
-        double rsi24 = rsi12 - (Math.random() - 0.5) * 5;
+        // ── MACD (EMA12 / EMA26 / EMA9) ──────────────
+        double[] ema12 = ema(closes, 12);
+        double[] ema26 = ema(closes, 26);
+        int last = closes.length - 1;
+        double[] difArr = new double[closes.length];
+        for (int i = 0; i < closes.length; i++) difArr[i] = ema12[i] - ema26[i];
+        double[] deaArr = ema(difArr, 9);
+        double difVal  = r3(difArr[last]);
+        double deaVal  = r3(deaArr[last]);
+        double histVal = r3((difVal - deaVal) * 2);
 
-        double kdjK = rsi12 * 0.9 + (Math.random() - 0.5) * 10;
-        double kdjD = kdjK * 0.85 + (Math.random() - 0.5) * 5;
-        double kdjJ = kdjK * 3 - kdjD * 2;
+        // ── RSI (Wilder) ──────────────────────────────
+        double rsi6  = r2(rsi(closes, 6));
+        double rsi12 = r2(rsi(closes, 12));
+        double rsi24 = r2(rsi(closes, 24));
 
-        // 综合技术评分
+        // ── KDJ (9-period Stochastic) ─────────────────
+        double[] kdjArr = kdj(closes, highs, lows, 9);
+        double kVal = r2(kdjArr[0]);
+        double dVal = r2(kdjArr[1]);
+        double jVal = r2(kdjArr[2]);
+
+        // ── Bollinger Bands (MA20 ± 2σ) ──────────────
+        double[] boll = bollinger(closes, 20);
+        double bolUpper  = r2(boll[0]);
+        double bolMiddle = r2(boll[1]);
+        double bolLower  = r2(boll[2]);
+
+        // ── 综合技术评分 ───────────────────────────────
         int score = 50;
-        if (macdHist > 0) score += 15;
-        if (rsi12 < 70 && rsi12 > 40) score += 10;
-        if (rsi12 < 30) score += 15;  // 超卖反弹机会
-        if (rsi12 > 70) score -= 10;  // 超买风险
-        if (kdjJ < 20) score += 10;   // KDJ超卖
-        if (kdjJ > 90) score -= 8;    // KDJ超买
+        if (histVal > 0)           score += 15; else score -= 10;
+        if (rsi12 > 40 && rsi12 < 70) score += 10;
+        if (rsi12 < 30)            score += 15;   // 超卖反弹机会
+        if (rsi12 > 70)            score -= 10;   // 超买风险
+        if (jVal  < 20)            score += 10;   // KDJ 超卖
+        if (jVal  > 90)            score -= 8;    // KDJ 超买
+        if (price < bolLower)      score += 8;    // 价格跌破下轨
+        if (price > bolUpper)      score -= 8;    // 价格突破上轨
         score = Math.max(10, Math.min(95, score));
 
         return TechnicalIndicatorsDTO.builder()
                 .macd(TechnicalIndicatorsDTO.MacdDTO.builder()
-                        .dif(Math.round(macdDif * 1000) / 1000.0)
-                        .dea(Math.round(macdDea * 1000) / 1000.0)
-                        .histogram(Math.round(macdHist * 1000) / 1000.0)
-                        .build())
+                        .dif(difVal).dea(deaVal).histogram(histVal).build())
                 .rsi(TechnicalIndicatorsDTO.RsiDTO.builder()
-                        .rsi6(Math.round(rsi6 * 100) / 100.0)
-                        .rsi12(Math.round(rsi12 * 100) / 100.0)
-                        .rsi24(Math.round(rsi24 * 100) / 100.0)
-                        .build())
+                        .rsi6(rsi6).rsi12(rsi12).rsi24(rsi24).build())
                 .kdj(TechnicalIndicatorsDTO.KdjDTO.builder()
-                        .k(Math.round(kdjK * 100) / 100.0)
-                        .d(Math.round(kdjD * 100) / 100.0)
-                        .j(Math.round(kdjJ * 100) / 100.0)
-                        .build())
+                        .k(kVal).d(dVal).j(jVal).build())
                 .bollinger(TechnicalIndicatorsDTO.BollingerDTO.builder()
-                        .upper(Math.round(price * 1.06 * 100) / 100.0)
-                        .middle(Math.round(price * 100) / 100.0)
-                        .lower(Math.round(price * 0.94 * 100) / 100.0)
-                        .build())
+                        .upper(bolUpper).middle(bolMiddle).lower(bolLower).build())
                 .technicalScore(score)
                 .build();
     }
+
+    // ─────────────────────────────────────────────────────────
+    // 技术指标计算工具方法
+    // ─────────────────────────────────────────────────────────
+
+    /** 指数移动平均 (EMA)：初始值取前 period 个收盘价的 SMA */
+    private double[] ema(double[] data, int period) {
+        double[] result = new double[data.length];
+        double mult = 2.0 / (period + 1);
+        int warmup = Math.min(period - 1, data.length - 1);
+        double sum = 0;
+        for (int i = 0; i <= warmup; i++) sum += data[i];
+        result[warmup] = sum / (warmup + 1);
+        for (int i = warmup + 1; i < data.length; i++) {
+            result[i] = data[i] * mult + result[i - 1] * (1 - mult);
+        }
+        return result;
+    }
+
+    /** Wilder 平滑法 RSI */
+    private double rsi(double[] closes, int period) {
+        if (closes.length < period + 1) return 50.0;
+        double avgGain = 0, avgLoss = 0;
+        for (int i = 1; i <= period; i++) {
+            double diff = closes[i] - closes[i - 1];
+            if (diff > 0) avgGain += diff; else avgLoss -= diff;
+        }
+        avgGain /= period;
+        avgLoss /= period;
+        for (int i = period + 1; i < closes.length; i++) {
+            double diff = closes[i] - closes[i - 1];
+            avgGain = (avgGain * (period - 1) + Math.max(diff, 0)) / period;
+            avgLoss = (avgLoss * (period - 1) + Math.max(-diff, 0)) / period;
+        }
+        if (avgLoss == 0) return 100.0;
+        return 100.0 - 100.0 / (1 + avgGain / avgLoss);
+    }
+
+    /** 9 日随机指标 KDJ */
+    private double[] kdj(double[] closes, double[] highs, double[] lows, int period) {
+        double k = 50, d = 50;
+        for (int i = period - 1; i < closes.length; i++) {
+            double hh = highs[i], ll = lows[i];
+            for (int j = i - period + 1; j < i; j++) {
+                hh = Math.max(hh, highs[j]);
+                ll = Math.min(ll, lows[j]);
+            }
+            double rsv = (hh == ll) ? 50 : (closes[i] - ll) / (hh - ll) * 100;
+            k = 2.0 / 3.0 * k + 1.0 / 3.0 * rsv;
+            d = 2.0 / 3.0 * d + 1.0 / 3.0 * k;
+        }
+        return new double[]{k, d, 3 * k - 2 * d};
+    }
+
+    /** MA(period) 布林带，返回 [upper, middle, lower] */
+    private double[] bollinger(double[] closes, int period) {
+        int n = closes.length;
+        if (n < period) period = n;
+        double sum = 0;
+        for (int i = n - period; i < n; i++) sum += closes[i];
+        double mean = sum / period;
+        double var = 0;
+        for (int i = n - period; i < n; i++) {
+            double diff = closes[i] - mean;
+            var += diff * diff;
+        }
+        double sigma = Math.sqrt(var / period);
+        return new double[]{mean + 2 * sigma, mean, mean - 2 * sigma};
+    }
+
+    private double r2(double v) { return Math.round(v * 100) / 100.0; }
+    private double r3(double v) { return Math.round(v * 1000) / 1000.0; }
 }

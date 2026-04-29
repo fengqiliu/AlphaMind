@@ -96,7 +96,7 @@ export function AgentSelector({
                   className={cn(
                     "flex items-center gap-2 px-3 py-2 rounded-xl text-sm transition-all duration-300",
                     isSelected
-                      ? "bg-gradient-to-r text-white shadow-lg"
+                      ? ["bg-gradient-to-r text-white shadow-lg", gradient]
                       : "bg-[var(--bg-tertiary)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]",
                   )}
                   style={isSelected ? { boxShadow: `0 0 20px ${glow}` } : {}}

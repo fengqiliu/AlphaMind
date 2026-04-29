@@ -4,9 +4,8 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/common/Button";
 import { ConfidenceBar } from "@/components/common/ConfidenceBar";
 import { getAnalysisHistory } from "@/api/client";
-import type { AnalysisReport, SignalType } from "@/types";
+import type { AnalysisReport } from "@/types";
 import { SignalType as ST } from "@/types";
-import { ConfidenceLevel } from "@/types";
 import {
   History,
   FileText,
@@ -33,6 +32,19 @@ export default function HistoryPage() {
       .catch(() => setError("加载历史记录失败"))
       .finally(() => setIsLoading(false));
   }, []);
+
+  const handleDownload = (e: React.MouseEvent, report: AnalysisReport) => {
+    e.stopPropagation();
+    const blob = new Blob([JSON.stringify(report, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${report.stockCode}_${report.stockName}_${formatDate(report.createdAt)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const signalConfig = {
     [ST.BUY]: {
@@ -84,6 +96,10 @@ export default function HistoryPage() {
         {isLoading ? (
           <div className="p-8 flex items-center justify-center">
             <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="p-8 text-center">
+            <p className="text-[var(--bearish)] text-sm">{error}</p>
           </div>
         ) : reports.length === 0 ? (
           <div className="p-12 text-center">
@@ -172,7 +188,7 @@ export default function HistoryPage() {
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e) => handleDownload(e, report)}
                         className="text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
                       >
                         <Download className="w-4 h-4" />

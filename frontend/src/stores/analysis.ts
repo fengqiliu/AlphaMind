@@ -36,7 +36,7 @@ interface AnalysisState {
   reset: () => void;
 }
 
-export const useAnalysisStore = create<AnalysisState>((set, get) => ({
+export const useAnalysisStore = create<AnalysisState>((set) => ({
   currentStockCode: null,
   currentStockName: null,
   isAnalyzing: false,

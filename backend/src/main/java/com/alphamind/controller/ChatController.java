@@ -30,7 +30,6 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/chat")
 @RequiredArgsConstructor
-@CrossOrigin(origins = "*")
 public class ChatController {
 
     private final MemoryService memoryService;

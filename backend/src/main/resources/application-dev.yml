@@ -1,4 +1,10 @@
 # 开发环境配置
+alphamind:
+  cors:
+    allowed-origins: http://localhost:3000
+  market:
+    fetch-real-data: true
+
 spring:
   # PostgreSQL 本地开发数据库
   datasource:

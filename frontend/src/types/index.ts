@@ -138,22 +138,16 @@ export interface TechnicalIndicators {
   technicalScore: number;
 }
 
-// 舆情数据
+// 舆情数据（与后端 SentimentDataDTO 字段对应）
 export interface SentimentData {
-  newsCount: number;
-  forumPostsCount: number;
-  newsSentiment: number;
-  forumSentiment: number;
-  hotTopics: string[];
-  keyEvents: KeyEvent[];
-  overallSentiment: number;
-}
-
-export interface KeyEvent {
-  title: string;
-  source: string;
-  sentiment: number;
-  publishTime: string;
+  sentimentScore: number;        // 综合评分 0~1
+  sentimentTrend: string;        // 趋势描述
+  positiveFactors: string[];     // 正面因素列表
+  negativeFactors: string[];     // 负面因素列表
+  newsCountBySource: Record<string, number>; // 各平台新闻数量
+  mediaAttention: number;        // 媒体关注度 0~1
+  analysisSummary: string;       // 舆情摘要
+  aiSummary?: string;            // LLM 生成摘要（可选）
 }
 
 // 置信区间

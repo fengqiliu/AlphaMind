@@ -3,13 +3,22 @@ package com.alphamind.agent;
 import com.alphamind.model.dto.*;
 import com.alphamind.model.enums.AgentType;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestTemplate;
 
+import java.nio.charset.Charset;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 行情Agent - 负责采集和处理股票行情数据
@@ -95,8 +104,73 @@ public class MarketAgent extends BaseAgent {
         STOCK_NAMES.put(code, name);
     }
 
+    @Value("${alphamind.market.fetch-real-data:false}")
+    private boolean fetchRealData;
+
+    private static final RestTemplate REST_TEMPLATE;
+    static {
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3_000);
+        factory.setReadTimeout(5_000);
+        REST_TEMPLATE = new RestTemplate(factory);
+    }
+
+    /** Sina Finance 行情记录 */
+    private record SinaQuote(String name, double open, double prevClose, double current,
+                             double high, double low, long volumeLots, double amount) {}
+
     public MarketAgent() {
         super(AgentType.MARKET);
+    }
+
+    /**
+     * 将 A 股代码转换为新浪行情 symbol（sh/sz/bj 前缀）
+     */
+    private String toSinaSymbol(String code) {
+        if (code.startsWith("6") || code.startsWith("9")) return "sh" + code;
+        if (code.startsWith("0") || code.startsWith("2") || code.startsWith("3")) return "sz" + code;
+        if (code.startsWith("8") || code.startsWith("4")) return "bj" + code;
+        return "sz" + code;
+    }
+
+    /**
+     * 调用新浪行情 API 获取实时报价，失败返回 empty。
+     * 响应示例：var hq_str_sh600519="贵州茅台,open,prevClose,current,high,low,…,volLots,amount,…";
+     */
+    private Optional<SinaQuote> fetchFromSina(String stockCode) {
+        try {
+            String url = "https://hq.sinajs.cn/list=" + toSinaSymbol(stockCode);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Referer", "https://finance.sina.com.cn");
+            headers.set("User-Agent", "Mozilla/5.0 (compatible; AlphaMind/1.0)");
+            ResponseEntity<byte[]> resp = REST_TEMPLATE.exchange(
+                    url, HttpMethod.GET, new HttpEntity<>(headers), byte[].class);
+            if (resp.getBody() == null) return Optional.empty();
+
+            String body = new String(resp.getBody(), Charset.forName("GBK"));
+            int start = body.indexOf('"') + 1;
+            int end   = body.lastIndexOf('"');
+            if (start < 1 || end <= start) return Optional.empty();
+
+            String[] p = body.substring(start, end).split(",");
+            if (p.length < 10) return Optional.empty();
+            double current = Double.parseDouble(p[3]);
+            if (current <= 0) return Optional.empty(); // 停牌或休市
+
+            return Optional.of(new SinaQuote(
+                    p[0],
+                    Double.parseDouble(p[1]),   // open
+                    Double.parseDouble(p[2]),   // prevClose
+                    current,
+                    Double.parseDouble(p[4]),   // high
+                    Double.parseDouble(p[5]),   // low
+                    Long.parseLong(p[8]),        // volumeLots
+                    Double.parseDouble(p[9])     // amount
+            ));
+        } catch (Exception e) {
+            log.debug("Sina API unavailable for {}: {}", stockCode, e.getMessage());
+            return Optional.empty();
+        }
     }
 
     @Override
@@ -237,8 +311,9 @@ public class MarketAgent extends BaseAgent {
     }
 
     /**
-     * 获取市场数据（模拟实现 - TODO: 接入 Tushare Pro 或 AKShare）
-     * 根据股票代码返回对应的模拟行情数据，随机加入±2%波动模拟实时性
+     * 获取市场数据。
+     * 当 alphamind.market.fetch-real-data=true 时优先调用新浪行情 API 获取实时价格；
+     * API 不可用或关闭时降级为静态 STOCK_DATA（PE/PB/市值/换手率始终来自静态表）。
      */
     private MarketDataDTO fetchMarketData(String stockCode, String stockNameHint) {
         double[] baseData = STOCK_DATA.get(stockCode);
@@ -249,33 +324,62 @@ public class MarketAgent extends BaseAgent {
         long volume;
 
         if (baseData != null) {
-            // 添加轻微随机波动，模拟实时行情
-            double jitter = 1 + (Math.random() - 0.5) * 0.02;
-            basePrice = baseData[0] * jitter;
-            change    = baseData[1] * jitter;
+            basePrice = baseData[0];
+            change    = baseData[1];
             changePct = baseData[2];
             open      = baseData[3];
-            high      = baseData[4] * jitter;
-            low       = baseData[5] * jitter;
+            high      = baseData[4];
+            low       = baseData[5];
             pe        = baseData[6];
             pb        = baseData[7];
-            marketCap = (long)(baseData[8] * jitter);
+            marketCap = baseData[8];
             turnover  = baseData[9];
             volume    = (long) baseData[10];
         } else {
-            // 未知股票 - 生成合理默认数据
-            basePrice = 50.0 + Math.random() * 100;
-            change    = (Math.random() - 0.5) * 3;
-            changePct = change / basePrice * 100;
-            open      = basePrice - change * 0.3;
-            high      = basePrice * (1 + Math.random() * 0.03);
-            low       = basePrice * (1 - Math.random() * 0.03);
-            pe        = 15 + Math.random() * 30;
-            pb        = 1 + Math.random() * 5;
-            marketCap = (long)(basePrice * (1e8 + Math.random() * 9e9));
-            turnover  = 0.5 + Math.random() * 2;
-            volume    = (long)(1e7 + Math.random() * 1e8);
+            // 未收录股票 - 中性默认数据
+            basePrice = 50.0;
+            change    = 0;
+            changePct = 0;
+            open      = 50.0;
+            high      = 51.0;
+            low       = 49.0;
+            pe        = 20.0;
+            pb        = 2.0;
+            marketCap = 5e10;
+            turnover  = 1.0;
+            volume    = 5_000_000L;
         }
+
+        // ── 优先使用新浪行情 API 获取实时价格 ──
+        if (fetchRealData) {
+            Optional<SinaQuote> realQuote = fetchFromSina(stockCode);
+            if (realQuote.isPresent()) {
+                SinaQuote q = realQuote.get();
+                basePrice = q.current();
+                open      = q.open();
+                high      = q.high();
+                low       = q.low();
+                change    = Math.round((q.current() - q.prevClose()) * 100) / 100.0;
+                changePct = q.prevClose() > 0
+                        ? Math.round(change / q.prevClose() * 10000) / 100.0 : 0;
+                volume    = q.volumeLots() * 100; // 手 → 股
+                // 用真实成交量和静态总股本反算换手率
+                if (baseData != null && baseData[0] > 0) {
+                    long totalShares = (long) (baseData[8] / baseData[0]);
+                    if (totalShares > 0) {
+                        turnover = Math.round(volume * 10000.0 / totalShares) / 100.0;
+                    }
+                    marketCap = (long) (basePrice * totalShares);
+                }
+                if (!q.name().isBlank()) stockName = q.name();
+                log.debug("Sina real-time: {} price={} change={}%", stockCode, basePrice, changePct);
+            } else {
+                log.debug("Sina API miss for {}, using static data", stockCode);
+            }
+        }
+
+        // 用同一条 K 线序列计算均线，保证数据一致性
+        List<double[]> klineData = generateKlineData(basePrice, 60);
 
         return MarketDataDTO.builder()
                 .stockCode(stockCode)
@@ -294,12 +398,12 @@ public class MarketAgent extends BaseAgent {
                 .marketCap((long) marketCap)
                 .updateTime(java.time.LocalDateTime.now().toString())
                 .klineDates(generateKlineDates(60))
-                .klines(generateKlineData(basePrice, 60))
+                .klines(klineData)
                 .klineVolumes(generateKlineVolumes(volume, 60))
-                .ma5(calculateMA(generateKlineData(basePrice, 60), 5))
-                .ma10(calculateMA(generateKlineData(basePrice, 60), 10))
-                .ma20(calculateMA(generateKlineData(basePrice, 60), 20))
-                .ma60(calculateMA(generateKlineData(basePrice, 60), 60))
+                .ma5(calculateMA(klineData, 5))
+                .ma10(calculateMA(klineData, 10))
+                .ma20(calculateMA(klineData, 20))
+                .ma60(calculateMA(klineData, 60))
                 .build();
     }
 

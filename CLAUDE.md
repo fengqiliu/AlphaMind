@@ -18,13 +18,22 @@ npm run build    # Production build
 npm run lint     # ESLint check
 ```
 
+> There is no frontend test runner configured.
+
 ### Backend (Spring Boot 3.4)
 
 ```bash
 cd backend
-./mvnw spring-boot:run   # Runs on http://localhost:8080
-./mvnw clean package     # Build JAR
-./mvnw test              # Run tests
+SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run   # Runs on http://localhost:8080
+mvn clean package     # Build JAR
+mvn test              # Run tests
+```
+
+Single-test syntax:
+
+```bash
+mvn -Dtest=ClassName test
+mvn -Dtest=ClassName#methodName test
 ```
 
 ### Environment Variables
@@ -117,9 +126,20 @@ GET  /api/v1/chat/stream/{sessionId}?message={msg}&agentType=PORTFOLIO
 
 **Strategy Types**: CONSERVATIVE (30% position, -5% stop), BALANCED (50%, -7%), AGGRESSIVE (80%, -10%)
 
+## Key Conventions
+
+- All agents extend `BaseAgent` and share state via `setContext()`/`getContext()`. Common keys: `stockCode`, `stockName`, `strategy`, `marketData`, `technicalIndicators`, `sentimentData`, `tradeSignal`, `confidence`, `sessionId`, `contextSummary`
+- `BaseAgent.llmCall()` is optional. If no `ChatClient` is available or the call fails, agents fall back to template output instead of failing the request
+- All REST endpoints return `ApiResponse<T>` envelope with `code`, `message`, and `data`
+- Frontend strategy values are lowercase (`conservative`/`balanced`/`aggressive`); backend `StrategyTypeConverter` accepts case-insensitive input
+- Stock search uses query parameter `query`, not `keyword`; watchlist defaults `userId` to `default`
+- Frontend code should use relative `/api/v1/...` URLs; `frontend/next.config.ts` rewrites these to `http://localhost:8080/api/:path*`
+- User-facing copy, prompts, and domain text are in Chinese — keep new UI strings consistent
+
 ## Important Notes
 
-- The frontend has its own `frontend/CLAUDE.md` with frontend-specific guidance
-- Backend has no tests yet - test infrastructure not set up
-- Redis is optional but required for conversation memory persistence
-- The `frontend/AGENTS.md` contains important Next.js 16 breaking changes - read before modifying frontend code
+- Before modifying frontend code, read `frontend/AGENTS.md` — Next.js 16 has breaking changes from earlier versions
+- Backend has test infrastructure configured but no committed test classes (`mvn test` is mainly a compile and Surefire baseline check)
+- Redis is optional; `MemoryService` falls back to local in-memory storage when Redis is unavailable
+- Local backend development uses `dev` Spring profile — `application-dev.yml` disables production DB auto-configuration
+- Analysis history uses in-memory deque (most recent 50); chat history uses Redis with in-memory fallback

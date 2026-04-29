@@ -20,6 +20,15 @@ export default function WatchlistPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const getMarketName = (code: string) => {
+    if (code.startsWith("688")) return "科创板";
+    if (code.startsWith("6")) return "上海A股";
+    if (code.startsWith("300") || code.startsWith("301")) return "创业板";
+    if (code.startsWith("0") || code.startsWith("2")) return "深圳A股";
+    if (code.startsWith("8") || code.startsWith("4")) return "北交所";
+    return "A股";
+  };
+
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -115,6 +124,10 @@ export default function WatchlistPage() {
           <div className="p-8 flex items-center justify-center">
             <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin" />
           </div>
+        ) : error ? (
+          <div className="p-8 text-center">
+            <p className="text-[var(--bearish)] text-sm">{error}</p>
+          </div>
         ) : items.length === 0 ? (
           <div className="p-12 text-center">
             <div className="w-16 h-16 mx-auto mb-4 bg-[var(--bg-tertiary)] rounded-2xl flex items-center justify-center">
@@ -157,7 +170,7 @@ export default function WatchlistPage() {
                       </span>
                     </div>
                     <div className="text-xs text-[var(--text-muted)] mt-1">
-                      {item.stockCode.startsWith("6") ? "上海" : "深圳"} · 主板
+                      {getMarketName(item.stockCode)} · 主板
                     </div>
                   </div>
 

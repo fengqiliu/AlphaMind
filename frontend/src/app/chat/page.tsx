@@ -12,7 +12,6 @@ import { Send, Loader2, Trash2, Zap } from "lucide-react";
 
 export default function ChatPage() {
   const [stockSelected, setStockSelected] = useState(false);
-  const [currentStockCode, setCurrentStockCode] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const {
@@ -30,7 +29,6 @@ export default function ChatPage() {
     setLoadingMessage,
     setError,
     addMessage,
-    handleSSEEvent,
     clearMessages,
     reset,
   } = useChatStore();
@@ -55,7 +53,6 @@ export default function ChatPage() {
 
   const handleStockSelect = async (stock: StockSearchResult) => {
     reset();
-    setCurrentStockCode(stock.code);
     setStockSelected(true);
 
     try {

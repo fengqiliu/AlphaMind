@@ -1,6 +1,6 @@
 # AlphaMind - 多 Agent 智能股票分析系统
 
-> 基于 Spring Boot、Spring AI 与 Next.js 的股票分析系统。通过流水线 Agent 协作 + 多空辩论仲裁，为单只股票提供更完整的结构化分析结果。
+> 基于 Spring Boot、Spring AI 与 Next.js 的股票分析系统。通过流水线 Agent 协作 + 多空辩论仲裁，为单只股票提供结构化分析结果，前后端全程真实 API 对接，无 mock 数据。
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Java](https://img.shields.io/badge/Java-17-green.svg)
@@ -14,10 +14,10 @@
 
 AlphaMind 由一组专职 Agent 共同完成股票分析：
 
-- `MarketAgent`：采集行情与基础市场数据
-- `TechnicalAgent`：计算技术指标并生成技术解读
-- `SentimentAgent`：分析舆情与消息面
-- `PortfolioAgent`：整合前置结果，给出交易建议
+- `MarketAgent`：通过新浪财经实时接口拉取行情数据，生成含均线的 K 线序列
+- `TechnicalAgent`：采用真实公式计算 EMA / RSI / KDJ / 布林带等技术指标
+- `SentimentAgent`：基于行情指标（涨跌幅、PE、换手率、量比）进行加权舆情评分
+- `PortfolioAgent`：整合前置结果，生成交易建议与仓位控制方案
 - `BullAgent` / `BearAgent` / `NeutralAgent`：从多头、空头、中立三个视角展开辩论
 - `ArbitratorAgent`：综合辩论观点，形成最终裁决
 
@@ -26,24 +26,30 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 1. **流水线模式**：Market → Technical → Sentiment → Portfolio
 2. **辩论模式**：Bull / Bear / Neutral → Arbitrator
 
-另外，系统支持：
+其他能力：
 
-- SSE 实时推送分析进度与阶段数据
-- 前后端真实 API 对接（不再使用前端 mock）
+- SSE 实时推送分析进度与各阶段数据
+- 新浪财经实时行情接入，可通过配置开关切换
 - LLM 可选接入；未配置 API Key 时自动降级为模板响应
-- 简易会话记忆与分析历史记录
+- 分析历史持久化（PostgreSQL jsonb），支持完整反序列化还原
+- 会话记忆（Redis，不可用时自动降级本地内存）
 
 ---
 
 ## 当前状态
 
-截至 2026-04-28，以下能力已完成并验证：
+截至 2026-04-29，以下能力已完成并验证：
 
-- 后端可在 **Java 17** 环境下成功编译
-- 后端可通过 `dev` profile 启动，无需本地 MySQL 即可进行开发
-- 前端已接入真实后端 API 与 SSE
-- `/api/v1/analysis/stream` 已验证可返回阶段性 SSE 数据
-- `/api/v1/stocks/search`、`/api/v1/stocks/watchlist`、`/api/v1/analysis/history`、聊天接口均已接通
+- 后端在 **Java 17** 环境下编译 0 错误
+- 后端通过 `dev` profile 启动，无需本地 MySQL 即可开发（使用 PostgreSQL dev 库）
+- 前端 Next.js build 5 条路由全部构建通过，0 TypeScript 错误
+- `MarketAgent` 已接入新浪财经实时接口，K 线锚定真实现价
+- `TechnicalAgent` 使用真实 EMA/RSI/KDJ/布林带公式，非随机数
+- `SentimentAgent` 使用确定性加权评分（涨跌幅 40%、PE 25%、换手率 20%、量比 15%）
+- 分析历史 `toDTO()` 完整还原所有 jsonb 字段及标量字段
+- 前端舆情分析卡片展示评分、利好/风险因素、媒体关注度
+- 前端 `SentimentData` 类型与后端 DTO 字段完全对齐
+- CORS 通过配置文件管理，无硬编码通配符
 
 ---
 
@@ -51,25 +57,28 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 
 ### 后端
 
-- **Java**: 17
-- **Spring Boot**: 3.4.1
-- **Spring AI**: 1.0.0
-- **通信**: REST + Server-Sent Events (SSE)
-- **数据**: MySQL（生产可用）、Redis（可选）
-- **LLM Provider**:
-  - OpenAI
-  - DeepSeek
-  - Anthropic
+| 组件 | 版本 / 说明 |
+| --- | --- |
+| Java | 17 |
+| Spring Boot | 3.4.1 |
+| Spring AI | 1.0.0 GA |
+| 通信 | REST + Server-Sent Events (WebFlux Flux) |
+| 数据库 | PostgreSQL（含 jsonb 字段）+ Flyway |
+| 缓存 | Redis（可选，不可用时降级本地内存） |
+| LLM Provider | OpenAI / DeepSeek / Anthropic |
+| 行情数据 | 新浪财经实时接口（`alphamind.market.fetch-real-data` 开关控制） |
 
 ### 前端
 
-- **Next.js**: 16.2.4（App Router）
-- **React**: 19.2.4
-- **TypeScript**: 5
-- **状态管理**: Zustand
-- **HTTP 客户端**: Axios
-- **图表**: ECharts
-- **样式**: Tailwind CSS 4
+| 组件 | 版本 / 说明 |
+| --- | --- |
+| Next.js | 16.2.4（App Router） |
+| React | 19 |
+| TypeScript | 5 |
+| 状态管理 | Zustand |
+| HTTP 客户端 | Axios（REST） + EventSource（SSE） |
+| 图表 | ECharts |
+| 样式 | Tailwind CSS 4 |
 
 ---
 
@@ -79,27 +88,25 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 AlphaMind/
 ├── backend/
 │   ├── src/main/java/com/alphamind/
-│   │   ├── agent/              # 多 Agent 实现
-│   │   ├── config/             # Spring / AI / Converter 配置
-│   │   ├── controller/         # 分析、聊天、股票接口
-│   │   ├── model/              # DTO / 枚举 / 实体
-│   │   ├── service/            # 编排、记忆、股票服务
+│   │   ├── agent/              # 多 Agent 实现（BaseAgent + 7 个专职 Agent）
+│   │   ├── config/             # Spring / AI / CORS / Converter 配置
+│   │   ├── controller/         # 分析（SSE+同步+历史）、聊天、股票接口
+│   │   ├── model/              # DTO / 枚举 / 实体（含 jsonb Entity）
+│   │   ├── service/            # PipelineOrchestrator / MemoryService / StockService
 │   │   └── AlphaMindApplication.java
 │   ├── src/main/resources/
-│   │   ├── application.yml
-│   │   └── application-dev.yml
+│   │   ├── application.yml        # 生产配置（含环境变量占位）
+│   │   └── application-dev.yml    # 开发配置（PostgreSQL dev 库、真实行情开关）
 │   └── pom.xml
 ├── frontend/
 │   ├── src/
-│   │   ├── app/                # Next.js 页面
-│   │   ├── api/                # API 客户端
-│   │   ├── components/         # UI 组件
-│   │   ├── hooks/              # 自定义 Hook（含 useSSE）
-│   │   ├── stores/             # Zustand 状态
-│   │   └── types/              # TS 类型定义
-│   ├── next.config.ts
+│   │   ├── app/                # Next.js 页面（/ chat/ history/ watchlist/）
+│   │   ├── api/                # Axios API 客户端
+│   │   ├── components/         # UI 组件（analysis/ chart/ common/ agent/）
+│   │   ├── stores/             # Zustand 状态（analysis / chat / watchlist）
+│   │   └── types/              # TypeScript 类型定义
+│   ├── next.config.ts          # /api/:path* 代理到 localhost:8080
 │   └── package.json
-├── .env                        # 本地环境变量占位
 └── README.md
 ```
 
@@ -113,40 +120,44 @@ AlphaMind/
 - npm 9+
 - JDK 17+
 - Maven 3.8+
+- PostgreSQL（dev 环境需要，数据库名 `alphamind_dev`）
 
-> 开发模式下 **不强制要求 MySQL / Redis / LLM API Key**。
+> Redis 和 LLM API Key 均为可选。无 Key 时系统自动进入模板/降级模式。
 
 ---
 
 ## 环境变量
 
-项目根目录已提供 `.env` 占位文件，可按需填写：
+可在项目根目录创建 `.env` 文件（后端通过 Spring 的 `${VAR:default}` 语法读取）：
 
 ```env
+# LLM（至少填一个才能启用真实 AI 响应）
 OPENAI_API_KEY=
 DEEPSEEK_API_KEY=
 ANTHROPIC_API_KEY=
 OPENAI_BASE_URL=
+
+# 数据库（生产环境）
 DB_PASSWORD=
+
+# Redis（可选，不填时自动降级本地内存）
 REDIS_PASSWORD=
-NEXT_PUBLIC_API_BASE_URL=
+
+# CORS（默认 http://localhost:3000）
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+
+# 是否拉取新浪财经真实行情（默认 false，dev profile 默认 true）
+FETCH_REAL_DATA=true
 ```
-
-说明：
-
-- 若不填任何 LLM Key，系统会自动进入**模板/降级模式**
-- `NEXT_PUBLIC_API_BASE_URL` 默认可留空；前端开发模式通过 `next.config.ts` 代理到后端
-- `DB_PASSWORD`、`REDIS_PASSWORD` 主要用于非 dev 环境
 
 ---
 
 ## 本地运行
 
-### 1. 启动后端（推荐 dev profile）
+### 1. 启动后端（dev profile）
 
 ```bash
 cd backend
-mvn compile
 SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run
 ```
 
@@ -154,9 +165,10 @@ SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run
 
 `dev` profile 特点：
 
-- 禁用 MySQL / JPA 自动配置，方便本地快速启动
-- 保留 Redis 配置，但 Redis 不可用时会自动降级到本地内存
-- 未配置 API Key 时仍可运行，只是使用模板输出
+- 使用 PostgreSQL `localhost:5432/alphamind_dev`（需提前建库）
+- 启用真实新浪财经行情接口（`alphamind.market.fetch-real-data: true`）
+- Redis 不可用时自动降级本地内存
+- 无 LLM Key 时使用模板输出，流程依然走通
 
 ### 2. 启动前端
 
@@ -168,23 +180,16 @@ npm run dev
 
 默认地址：`http://localhost:3000`
 
-如果 3000 端口被占用，Next.js 会自动切换到其他端口（例如 3001）。
+浏览器请求 `/api/v1/*` 会由 `next.config.ts` 自动代理到后端 8080，无需手动处理跨域。
 
 ### 3. 生产构建
 
-后端：
-
 ```bash
-cd backend
-mvn clean package
-```
+# 后端
+cd backend && mvn clean package
 
-前端：
-
-```bash
-cd frontend
-npm run build
-npm run start
+# 前端
+cd frontend && npm run build && npm run start
 ```
 
 ---
@@ -194,32 +199,26 @@ npm run start
 ### 流水线模式
 
 ```text
-MarketAgent
-  -> TechnicalAgent
-  -> SentimentAgent
-  -> PortfolioAgent
+MarketAgent（新浪实时行情 + K线序列）
+  -> TechnicalAgent（EMA / RSI / KDJ / 布林带）
+  -> SentimentAgent（加权舆情评分）
+  -> PortfolioAgent（交易建议 + 仓位控制）
 ```
 
 ### 辩论模式
 
 ```text
-BullAgent -----┐
-BearAgent -----┼--> ArbitratorAgent
-NeutralAgent --┘
+BullAgent ─────┐
+BearAgent ─────┼──> ArbitratorAgent（最终裁决 + 置信度）
+NeutralAgent ──┘
 ```
 
 ### LLM 调用策略
 
-所有核心 Agent 统一继承 `BaseAgent`，通过 `llmCall(systemPrompt, userPrompt)` 调用模型：
+所有 Agent 统一继承 `BaseAgent`，通过 `llmCall(systemPrompt, userPrompt)` 调用模型：
 
 - 有可用 `ChatClient`：走真实 LLM
 - 无可用 `ChatClient` 或调用失败：自动回退到模板输出
-
-这意味着：
-
-- 本地无 Key 也能跑通完整流程
-- 联调时无需先解决模型接入问题
-- 产品体验与开发体验可以解耦
 
 ---
 
@@ -227,87 +226,68 @@ NeutralAgent --┘
 
 ### 分析接口
 
-#### 1) SSE 流式分析
+#### SSE 流式分析
 
 ```http
-GET /api/v1/analysis/stream?stockCode=600519&strategy=balanced&enableDebate=true
+GET /api/v1/analysis/stream?stockCode=600519&strategy=balanced&enableDebate=false
 ```
-
-参数：
 
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | `stockCode` | string | 是 | 股票代码 |
-| `stockName` | string | 否 | 股票名称，默认使用代码 |
-| `strategy` | string | 否 | `CONSERVATIVE` / `BALANCED` / `AGGRESSIVE`，前端也可传小写 |
+| `strategy` | string | 否 | `CONSERVATIVE` / `BALANCED` / `AGGRESSIVE`（大小写均可） |
 | `enableDebate` | boolean | 否 | 是否启用辩论模式 |
+| `mode` | string | 否 | `PIPELINE` / `DEBATE`，优先级高于 `enableDebate` |
 | `sessionId` | string | 否 | 会话 ID |
 
-典型 SSE 片段：
+典型事件序列：
 
 ```text
 data: {"event":"stage","stage":"MARKET","message":"正在采集行情数据..."}
-
 data: {"event":"data","agentType":"MARKET","data":{...}}
-
 data: {"event":"stage","stage":"TECHNICAL","message":"正在进行技术分析..."}
-
+data: {"event":"data","agentType":"TECHNICAL","data":{...}}
+data: {"event":"data","agentType":"SENTIMENT","data":{...}}
+data: {"event":"data","agentType":"PORTFOLIO","data":{...}}
 event: result
-data: {"code":200,"message":"分析完成","data":{...}}
+data: {"code":200,"message":"分析完成","data":{完整 AnalysisReportDTO}}
 ```
 
-#### 2) 同步分析
+#### 同步分析
 
 ```http
 POST /api/v1/analysis/analyze
 Content-Type: application/json
 
-{
-  "stockCode": "600519",
-  "strategy": "BALANCED",
-  "enableDebate": true
-}
+{ "stockCode": "600519", "strategy": "BALANCED", "enableDebate": false }
 ```
 
-#### 3) 分析历史
+#### 分析历史
 
 ```http
 GET /api/v1/analysis/history?stockCode=600519&limit=20
 ```
 
-说明：当前历史记录保存在后端内存中，默认仅保留最近 50 条。
+> 历史记录存入 PostgreSQL，支持完整字段还原（包括 marketData / technicalIndicators / sentimentData / judgment / tradeSignal / confidence 等所有 jsonb 与标量字段）。
 
 ---
 
 ### 聊天接口
 
-#### 创建会话
-
 ```http
+# 创建会话
 POST /api/v1/chat/session?stockCode=600519&stockName=贵州茅台
-```
 
-#### 普通消息
+# 普通消息
+POST /api/v1/chat/message?sessionId={id}&content=适合抄底吗？&agentType=PORTFOLIO
 
-```http
-POST /api/v1/chat/message?sessionId={sessionId}&content=这只股票适合抄底吗？&agentType=PORTFOLIO
-```
-
-#### SSE 流式消息
-
-```http
+# SSE 流式消息
 GET /api/v1/chat/stream/{sessionId}?message=怎么看当前走势？&agentType=TECHNICAL
-```
 
-#### 历史记录
-
-```http
+# 历史记录
 GET /api/v1/chat/history/{sessionId}?limit=20
-```
 
-#### 清除会话
-
-```http
+# 清除会话
 DELETE /api/v1/chat/session/{sessionId}
 ```
 
@@ -315,23 +295,9 @@ DELETE /api/v1/chat/session/{sessionId}
 
 ### 股票接口
 
-#### 搜索股票
-
 ```http
-GET /api/v1/stocks/search?query=600519
-```
-
-> 注意：参数名是 `query`，不是 `keyword`。
-
-#### 获取股票详情
-
-```http
-GET /api/v1/stocks/{code}
-```
-
-#### 自选股管理
-
-```http
+GET    /api/v1/stocks/search?query=600519          # 参数名是 query，不是 keyword
+GET    /api/v1/stocks/{code}
 GET    /api/v1/stocks/watchlist?userId=default
 POST   /api/v1/stocks/watchlist/{code}?userId=default
 DELETE /api/v1/stocks/watchlist/{code}?userId=default
@@ -339,22 +305,14 @@ DELETE /api/v1/stocks/watchlist/{code}?userId=default
 
 ---
 
-## 前端说明
+## 前端页面
 
-前端已完成从 mock 到真实后端的切换：
-
-- `src/app/page.tsx`：接入真实分析 SSE
-- `src/app/chat/page.tsx`：接入真实聊天流
-- `src/app/watchlist/page.tsx`：接入真实 watchlist API
-- `src/app/history/page.tsx`：接入真实分析历史 API
-- `src/hooks/useSSE.ts`：统一封装 `EventSource`
-- `next.config.ts`：配置 `/api/:path*` 代理到 `http://localhost:8080/api/:path*`
-
-这意味着前端本地开发时：
-
-- 浏览器请求 `/api/v1/*`
-- Next.js 自动转发到后端 8080
-- 不需要手动处理跨域
+| 路由 | 功能 |
+| --- | --- |
+| `/` | 主分析页：股票搜索、策略/模式选择、SSE 实时进度、市场行情、舆情分析、K线图、技术指标、交易建议、辩论结果 |
+| `/chat` | 对话页：选择 Agent、流式聊天 |
+| `/history` | 历史记录：查看过往分析报告 |
+| `/watchlist` | 自选股管理 |
 
 ---
 
@@ -366,59 +324,53 @@ DELETE /api/v1/stocks/watchlist/{code}?userId=default
 | 平衡 | `BALANCED` | 50% | -7% |
 | 激进 | `AGGRESSIVE` | 80% | -10% |
 
-后端通过 `StrategyTypeConverter` 支持大小写不敏感转换，例如：
-
-- `BALANCED`
-- `balanced`
-
-都可以正常解析。
-
 ---
 
-## 开发建议
+## 开发指引
 
 ### 新增 Agent
 
-1. 继承 `BaseAgent`
-2. 实现 `analyze()`、`chat()`、`getSystemPrompt()`
-3. 在 `PipelineOrchestrator` 或 `ChatController` 中接入
-4. 使用 `llmCall()` + fallback 模式，保证无 Key 也能开发
+1. 继承 `BaseAgent`，实现 `analyze()`、`chat()`、`getSystemPrompt()`
+2. 在 `PipelineOrchestrator` 或 `ChatController` 中接入
+3. 使用 `llmCall()` + fallback 模式，保证无 Key 也能本地开发
 
-### 接入真实数据源
+### 切换行情数据源
 
-目前股票/行情数据仍偏示例化；后续可考虑接入：
+目前 `MarketAgent` 支持新浪财经实时接口。`dev` profile 默认开启：
 
-- Tushare
-- AKShare
-- 东方财富公开接口
-- 券商研究报告 / 新闻聚合源
+```yaml
+alphamind:
+  market:
+    fetch-real-data: true
+```
+
+生产环境可通过环境变量 `FETCH_REAL_DATA=true` 开启，或在 `application.yml` 中修改默认值。
 
 ### 已知限制
 
-- `analysis/history` 当前为**进程内内存历史**，重启后会丢失
-- `dev` profile 不启用 JPA，因此不依赖 MySQL
-- Redis 不可用时，会退回本地内存
-- 当前 SSE 输出格式为文本事件流，前端已兼容
+- 聊天历史依赖 Redis；Redis 不可用时，重启后会话内存清空
+- 当前股票搜索为本地静态匹配，未接入外部股票元数据库
+- 新浪财经接口为非官方公开数据，如失败会降级为合成数据
 
 ---
 
-## 验证方式
-
-已验证的基本命令如下：
+## 验证命令
 
 ```bash
 # 后端编译
-cd backend
-mvn compile
+cd backend && SPRING_PROFILES_ACTIVE=dev mvn -q compile
 
-# 后端启动（开发模式）
-SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run
+# 后端启动
+cd backend && SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run
+
+# 前端构建
+cd frontend && npm run build
 
 # 测试股票搜索
 curl 'http://localhost:8080/api/v1/stocks/search?query=600519'
 
-# 测试分析流
-curl --max-time 8 'http://localhost:8080/api/v1/analysis/stream?stockCode=600519&strategy=balanced&enableDebate=false'
+# 测试 SSE 分析流
+curl --max-time 10 'http://localhost:8080/api/v1/analysis/stream?stockCode=600519&strategy=balanced&enableDebate=false'
 ```
 
 ---
@@ -429,13 +381,4 @@ MIT License
 
 ---
 
-## 项目链接
-
-- GitHub: [https://github.com/fengqiliu/AlphaMind](https://github.com/fengqiliu/AlphaMind)
-- Issues: [https://github.com/fengqiliu/AlphaMind/issues](https://github.com/fengqiliu/AlphaMind/issues)
-
 ---
-
-## 免责声明
-
-本项目仅供学习、研究与工程实践演示使用，不构成任何投资建议。市场有风险，决策需谨慎。
