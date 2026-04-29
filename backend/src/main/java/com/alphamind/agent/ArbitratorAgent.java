@@ -36,20 +36,40 @@ public class ArbitratorAgent extends BaseAgent {
             TradeSignalDTO tradeSignal = getContext("tradeSignal");
             ConfidenceDTO confidence = getContext("confidence");
 
-            // 收集投票
+            // 读取三方辩论观点（由 DebateOrchestrator 注入）
+            DebateViewDTO bullView   = getContext("bullView");
+            DebateViewDTO bearView   = getContext("bearView");
+            DebateViewDTO neutralView = getContext("neutralView");
+
+            // 收集基础票数
             Map<DebatePosition, Integer> voteBreakdown = new EnumMap<>(DebatePosition.class);
-            voteBreakdown.put(DebatePosition.BULLISH, bullAgent.getVoteWeight());
-            voteBreakdown.put(DebatePosition.BEARISH, bearAgent.getVoteWeight());
-            voteBreakdown.put(DebatePosition.NEUTRAL, neutralAgent.getVoteWeight());
+            int bullVotes = bullAgent.getVoteWeight();
+            int bearVotes = bearAgent.getVoteWeight();
+            int neutralVotes = neutralAgent.getVoteWeight();
+
+            // 根据三方置信度动态加权
+            if (bullView != null && bullView.getConfidence() != null)
+                bullVotes += (int) (bullView.getConfidence().getValue() * 2);
+            if (bearView != null && bearView.getConfidence() != null)
+                bearVotes += (int) (bearView.getConfidence().getValue() * 2);
+
+            voteBreakdown.put(DebatePosition.BULLISH, bullVotes);
+            voteBreakdown.put(DebatePosition.BEARISH, bearVotes);
+            voteBreakdown.put(DebatePosition.NEUTRAL, neutralVotes);
 
             // 计算最终立场
-            DebatePosition finalPosition = calculateFinalPosition(technical, sentiment);
+            DebatePosition finalPosition = calculateFinalPosition(technical, sentiment, bullVotes, bearVotes, neutralVotes);
+
+            // 生成裁决推理（优先 LLM + 三方观点，降级为模板）
+            String reasoning = generateReasoningWithViews(
+                    finalPosition, technical, sentiment, tradeSignal,
+                    bullView, bearView, neutralView);
 
             // 生成裁决
             JudgmentDTO judgment = JudgmentDTO.builder()
                     .finalPosition(finalPosition)
                     .confidence(confidence)
-                    .reasoning(generateReasoning(finalPosition, technical, sentiment, tradeSignal))
+                    .reasoning(reasoning)
                     .voteBreakdown(voteBreakdown)
                     .riskWarnings(generateRiskWarnings(finalPosition, technical, sentiment))
                     .finalSignal(tradeSignal)
@@ -150,11 +170,10 @@ public class ArbitratorAgent extends BaseAgent {
 
     private DebatePosition calculateFinalPosition(
             TechnicalIndicatorsDTO technical,
-            SentimentDataDTO sentiment) {
-
-        int bullishVotes = bullAgent.getVoteWeight();
-        int bearishVotes = bearAgent.getVoteWeight();
-        int neutralVotes = neutralAgent.getVoteWeight();
+            SentimentDataDTO sentiment,
+            int bullishVotes,
+            int bearishVotes,
+            int neutralVotes) {
 
         // 技术面加权
         int techScore = technical.getTechnicalScore();
@@ -175,6 +194,58 @@ public class ArbitratorAgent extends BaseAgent {
         } else {
             return DebatePosition.NEUTRAL;
         }
+    }
+
+    private String generateReasoningWithViews(
+            DebatePosition position,
+            TechnicalIndicatorsDTO technical,
+            SentimentDataDTO sentiment,
+            TradeSignalDTO signal,
+            DebateViewDTO bullView,
+            DebateViewDTO bearView,
+            DebateViewDTO neutralView) {
+
+        if (isLlmAvailable() && bullView != null && bearView != null) {
+            String prompt = String.format("""
+                    以下是三位分析师的辩论内容，请作为仲裁官综合判断，给出最终裁决理由（200字以内，专业简洁）：
+
+                    【多头观点】
+                    %s
+                    核心论点：%s
+
+                    【空头观点】
+                    %s
+                    核心论点：%s
+
+                    【中立评估】
+                    %s
+
+                    综合投票结果：%s
+                    最终信号：%s，目标价¥%.2f，止损价¥%.2f
+
+                    请给出裁决理由：
+                    """,
+                    truncate(bullView.getView(), 300),
+                    String.join("；", bullView.getReasons()),
+                    truncate(bearView.getView(), 300),
+                    String.join("；", bearView.getReasons()),
+                    neutralView != null ? truncate(neutralView.getView(), 200) : "中立方缺席",
+                    position.getLabel(),
+                    signal != null ? signal.getType().getLabel() : "持有",
+                    signal != null ? signal.getTargetPrice() : 0.0,
+                    signal != null ? signal.getStopLoss() : 0.0);
+
+            String llmResult = llmCall(getSystemPrompt(), prompt);
+            if (llmResult != null) return llmResult;
+        }
+
+        return generateReasoning(position, technical, sentiment, signal);
+    }
+
+    /** 截断过长文本，避免 Prompt 超出 token 限制 */
+    private String truncate(String text, int maxLen) {
+        if (text == null) return "";
+        return text.length() <= maxLen ? text : text.substring(0, maxLen) + "...";
     }
 
     private String generateReasoning(

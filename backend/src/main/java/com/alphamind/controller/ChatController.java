@@ -36,8 +36,9 @@ public class ChatController {
     private final ObjectMapper objectMapper;
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
+    private final AgentRouter agentRouter;
 
-    // Agent注入
+    // Agent注入（保留用于直接上下文初始化）
     private final MarketAgent marketAgent;
     private final TechnicalAgent technicalAgent;
     private final SentimentAgent sentimentAgent;
@@ -107,14 +108,22 @@ public class ChatController {
         memoryService.saveMessage(sessionId, userMessage);
         persistMessage(sessionId, userMessage, null);
 
-        // 获取对应Agent
-        BaseAgent agent = getAgent(agentType);
+        // 路由消息：优先解析 @mention，否则使用显式 agentType
+        AgentRouter.RouteResult route = agentRouter.route(content, agentType);
+        BaseAgent agent = route.getAgent();
+        AgentType resolvedType = route.getAgentType();
         initializeAgentContext(agent, context);
 
-        // Agent处理
-        ChatMessage response = agent.chat(userMessage);
+        // Agent处理（使用去除 @mention 前缀后的实际内容）
+        ChatMessage agentInput = ChatMessage.builder()
+                .id(userMessage.getId())
+                .role(userMessage.getRole())
+                .content(route.getContent())
+                .timestamp(userMessage.getTimestamp())
+                .build();
+        ChatMessage response = agent.chat(agentInput);
         memoryService.saveMessage(sessionId, response);
-        persistMessage(sessionId, response, agentType.name());
+        persistMessage(sessionId, response, resolvedType.name());
 
         // 更新会话活跃时间
         chatSessionRepository.touchSession(sessionId, OffsetDateTime.now());
@@ -153,14 +162,22 @@ public class ChatController {
                 // 发送思考中状态
                 emitter.next("data: {\"event\":\"thinking\",\"message\":\"Agent正在分析...\"}\n\n");
 
-                // 获取对应Agent
-                BaseAgent agent = getAgent(agentType);
+                // 路由消息：优先解析 @mention，否则使用显式 agentType
+                AgentRouter.RouteResult route = agentRouter.route(message, agentType);
+                BaseAgent agent = route.getAgent();
+                AgentType resolvedType = route.getAgentType();
                 initializeAgentContext(agent, context);
 
-                // Agent处理
-                ChatMessage response = agent.chat(userMessage);
+                // Agent处理（使用去除 @mention 前缀后的实际内容）
+                ChatMessage agentInput = ChatMessage.builder()
+                        .id(userMessage.getId())
+                        .role(userMessage.getRole())
+                        .content(route.getContent())
+                        .timestamp(userMessage.getTimestamp())
+                        .build();
+                ChatMessage response = agent.chat(agentInput);
                 memoryService.saveMessage(sessionId, response);
-                persistMessage(sessionId, response, agentType.name());
+                persistMessage(sessionId, response, resolvedType.name());
                 chatSessionRepository.touchSession(sessionId, OffsetDateTime.now());
 
                 // 发送响应
@@ -234,19 +251,6 @@ public class ChatController {
         } catch (Exception e) {
             log.warn("持久化消息失败（非致命）: sessionId={}, msgId={}", sessionId, msg.getId(), e);
         }
-    }
-
-    private BaseAgent getAgent(AgentType type) {
-        return switch (type) {
-            case MARKET -> marketAgent;
-            case TECHNICAL -> technicalAgent;
-            case SENTIMENT -> sentimentAgent;
-            case PORTFOLIO -> portfolioAgent;
-            case BULL -> bullAgent;
-            case BEAR -> bearAgent;
-            case NEUTRAL -> neutralAgent;
-            case ARBITRATOR -> arbitratorAgent;
-        };
     }
 
     private void initializeAgentContext(BaseAgent agent, AgentContext context) {

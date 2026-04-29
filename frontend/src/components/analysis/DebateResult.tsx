@@ -1,8 +1,8 @@
 "use client";
 
 import { cn } from "@/utils";
-import type { Judgment } from "@/types";
-import { DebatePosition, SignalType } from "@/types";
+import type { Judgment, DebateView } from "@/types";
+import { DebatePosition, SignalType, AgentType } from "@/types";
 import { ConfidenceBar } from "@/components/common/ConfidenceBar";
 import {
   ArrowUpCircle,
@@ -16,6 +16,7 @@ import {
 
 interface DebateResultProps {
   judgment: Judgment;
+  debateViews?: DebateView[];
   className?: string;
 }
 
@@ -58,12 +59,23 @@ const signalConfig = {
   [SignalType.HOLD]: "text-[var(--neutral)]",
 };
 
-export function DebateResult({ judgment, className }: DebateResultProps) {
+export function DebateResult({ judgment, debateViews, className }: DebateResultProps) {
   const position = positionConfig[judgment.finalPosition];
   const PositionIcon = position.icon;
 
   return (
     <div className={cn("space-y-5", className)}>
+      {/* 三方辩论观点卡片 */}
+      {debateViews && debateViews.length > 0 && (
+        <div className="space-y-3">
+          <div className="text-xs font-mono text-[var(--text-muted)] tracking-wider">
+            分析师辩论观点
+          </div>
+          {debateViews.map((view, i) => (
+            <DebateViewCard key={i} view={view} />
+          ))}
+        </div>
+      )}
       {/* Final Verdict */}
       <div className={cn("p-5 rounded-xl border", position.bg)}>
         <div className="flex items-center gap-3 mb-4">
@@ -189,6 +201,64 @@ export function DebateResult({ judgment, className }: DebateResultProps) {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DebateViewCard({ view }: { view: DebateView }) {
+  const config = positionConfig[view.position];
+  const Icon = config.icon;
+
+  const agentLabel =
+    view.agentType === AgentType.BULL
+      ? "多头分析师"
+      : view.agentType === AgentType.BEAR
+        ? "空头分析师"
+        : "中立分析师";
+
+  return (
+    <div className={cn("p-4 rounded-xl border", config.bg)}>
+      <div className="flex items-center gap-2 mb-3">
+        <Icon className={cn("w-4 h-4", config.textColor)} />
+        <span className={cn("text-sm font-semibold", config.textColor)}>
+          {agentLabel} · {config.label}
+        </span>
+        {view.upsidePotential && (
+          <span
+            className={cn(
+              "ml-auto text-xs font-mono px-2 py-0.5 rounded-full border",
+              config.bg,
+              config.textColor,
+            )}
+          >
+            {view.upsidePotential}
+          </span>
+        )}
+      </div>
+      <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-3">
+        {view.view}
+      </p>
+      {view.keyPoints && view.keyPoints.length > 0 && (
+        <ul className="space-y-1">
+          {view.keyPoints.map((point, i) => (
+            <li
+              key={i}
+              className="text-xs text-[var(--text-muted)] flex items-start gap-1.5"
+            >
+              <span className={config.textColor}>›</span>
+              {point}
+            </li>
+          ))}
+        </ul>
+      )}
+      {view.targetPrice != null && (
+        <div className="mt-3 text-xs font-mono text-[var(--text-muted)]">
+          目标价{" "}
+          <span className={cn("font-bold", config.textColor)}>
+            ¥{view.targetPrice.toFixed(2)}
+          </span>
         </div>
       )}
     </div>

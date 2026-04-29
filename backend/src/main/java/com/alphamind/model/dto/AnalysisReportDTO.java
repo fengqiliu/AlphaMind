@@ -7,6 +7,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @Builder
@@ -23,5 +24,7 @@ public class AnalysisReportDTO {
     private TechnicalIndicatorsDTO technicalIndicators;
     private SentimentDataDTO sentimentData;
     private JudgmentDTO judgment;
+    /** 辩论模式下三方 (Bull/Bear/Neutral) 各自的观点，pipeline 模式为 null */
+    private List<DebateViewDTO> debateViews;
     private LocalDateTime createdAt;
 }

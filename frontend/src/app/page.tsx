@@ -41,6 +41,8 @@ export default function AnalysisPage() {
     setError,
     reset,
     handleSSEEvent,
+    debateViews,
+    setDebateViews,
   } = useAnalysisStore();
 
   const handleStockSelect = (stock: StockSearchResult) => {
@@ -86,6 +88,8 @@ export default function AnalysisPage() {
           if (report.sentimentData) setSentimentData(report.sentimentData);
           if (report.tradeSignal) setFinalSignal(report.tradeSignal);
           if (report.judgment) setJudgment(report.judgment);
+          if (report.debateViews) setDebateViews(report.debateViews);
+          else setDebateViews(null);
         }
         setIsAnalyzing(false);
         es.close();
@@ -467,7 +471,7 @@ export default function AnalysisPage() {
             <span className="w-1.5 h-5 bg-[var(--accent)] rounded-full" />
             辩论裁决
           </h2>
-          <DebateResult judgment={judgment} />
+          <DebateResult judgment={judgment} debateViews={debateViews ?? undefined} />
         </div>
       )}
     </div>

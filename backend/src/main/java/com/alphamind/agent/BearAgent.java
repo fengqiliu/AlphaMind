@@ -2,9 +2,13 @@ package com.alphamind.agent;
 
 import com.alphamind.model.dto.*;
 import com.alphamind.model.enums.AgentType;
+import com.alphamind.model.enums.ConfidenceLevel;
 import com.alphamind.model.enums.DebatePosition;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 空头Agent - 从看空角度分析股票
@@ -24,8 +28,39 @@ public class BearAgent extends BaseAgent {
         TechnicalIndicatorsDTO tech = getContext("technicalIndicators");
         SentimentDataDTO sentiment = getContext("sentimentData");
 
-        String argument = generateBearArgument(market, tech, sentiment);
-        setContext("bearArgument", argument);
+        String viewText;
+        String llmPrompt = buildBearPrompt(market, tech, sentiment, "请从空头立场列出该股主要风险点和潜在下行空间。");
+        String llmResult = llmCall(getSystemPrompt(), llmPrompt);
+        viewText = llmResult != null ? llmResult : generateBearArgument(market, tech, sentiment);
+
+        List<String> reasons = extractBearReasons(market, tech, sentiment);
+        double stopLoss = market != null ? market.getCurrentPrice() * 0.93 : 0;
+        double downside = -7.0;
+        double confValue = tech != null ? Math.min(0.90, 0.35 + (100 - tech.getTechnicalScore()) / 130.0) : 0.55;
+        ConfidenceLevel confLevel = confValue >= 0.70 ? ConfidenceLevel.HIGH
+                : confValue >= 0.50 ? ConfidenceLevel.MEDIUM : ConfidenceLevel.LOW;
+
+        DebateViewDTO bearView = DebateViewDTO.builder()
+                .position(DebatePosition.BEARISH)
+                .agentType(AgentType.BEAR)
+                .view(viewText)
+                .reasons(reasons)
+                .keyPoints(reasons.stream().limit(3).toList())
+                .targetPrice(stopLoss)          // 空头的目标价为止据价
+                .upsidePotential(String.format("%.1f%%", downside))
+                .confidence(ConfidenceDTO.builder()
+                        .value(confValue)
+                        .level(confLevel)
+                        .explanation("基于风险指标和市场环境评估")
+                        .build())
+                .attackPoints(List.of(
+                        "多头短期上涨动能将逐渐衰减，风险收益比不划算",
+                        "市场整体处于震荡整理期，个股相对弱势",
+                        "脆弱点未回应，备下行展开复盘风险"
+                ))
+                .build();
+
+        setContext("bearView", bearView);
         return report;
     }
 
@@ -99,6 +134,33 @@ public class BearAgent extends BaseAgent {
                 tech != null ? tech.getTechnicalScore() : 0,
                 sentiment != null ? sentiment.getSentimentScore() * 100 : 0,
                 question);
+    }
+
+    private List<String> extractBearReasons(MarketDataDTO market, TechnicalIndicatorsDTO tech, SentimentDataDTO sentiment) {
+        List<String> reasons = new ArrayList<>();
+        if (tech != null) {
+            if (tech.getRsi() != null && tech.getRsi().getRsi12() > 70)
+                reasons.add("RSI 超买区域，短期有回调需求");
+            if (tech.getKdj() != null && tech.getKdj().getJ() > 90)
+                reasons.add("KDJ J值超买，动能可能衰竭");
+            if (tech.getMacd() != null && tech.getMacd().getHistogram() < 0)
+                reasons.add("MACD绿柱拓展，空头渔口加重");
+            if (tech.getTechnicalScore() < 45)
+                reasons.add("综合技术评分仅 " + tech.getTechnicalScore() + "/100，属偏弱单个股");
+        }
+        if (market != null) {
+            if (market.getPe() != null && market.getPe() > 50)
+                reasons.add("PE " + String.format("%.1f", market.getPe()) + "，高估値压力显著");
+            if (market.getChangePercent() != null && market.getChangePercent() > 5)
+                reasons.add("近期涨幅过大，获利回吐压力大");
+        }
+        if (sentiment != null && sentiment.getSentimentScore() < 0.45)
+            reasons.add("舆情评分低于 45/100，负面情绪累积");
+        if (reasons.isEmpty()) {
+            reasons.add("当前价格缺乏向上催化剂，备位调整冨力");
+            reasons.add("宏观不确定性增大，和屢观望为优");
+        }
+        return reasons;
     }
 
     private String generateBearArgument(MarketDataDTO marketData, TechnicalIndicatorsDTO technical, SentimentDataDTO sentiment) {

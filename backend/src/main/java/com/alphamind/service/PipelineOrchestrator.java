@@ -23,10 +23,7 @@ public class PipelineOrchestrator {
     private final TechnicalAgent technicalAgent;
     private final SentimentAgent sentimentAgent;
     private final PortfolioAgent portfolioAgent;
-    private final BullAgent bullAgent;
-    private final BearAgent bearAgent;
-    private final NeutralAgent neutralAgent;
-    private final ArbitratorAgent arbitratorAgent;
+    private final DebateOrchestrator debateOrchestrator;
 
     /**
      * 执行流水线分析
@@ -82,9 +79,7 @@ public class PipelineOrchestrator {
             // Stage 5: Debate (optional) - 多空辩论
             if (enableDebate) {
                 emit(eventConsumer, AnalysisStage.DEBATE, "正在进行多空辩论...");
-                initializeDebateAgents(report);
-                report = arbitratorAgent.analyze(report);
-                emitData(eventConsumer, AgentType.ARBITRATOR, report.getJudgment());
+                report = debateOrchestrator.runDebate(report, eventConsumer);
             }
 
             // Complete
@@ -122,12 +117,6 @@ public class PipelineOrchestrator {
         if (report.getSentimentData() != null) {
             agent.setContext("sentimentData", report.getSentimentData());
         }
-    }
-
-    private void initializeDebateAgents(AnalysisReportDTO report) {
-        initializeAgentContext(bullAgent, report, null);
-        initializeAgentContext(bearAgent, report, null);
-        initializeAgentContext(neutralAgent, report, null);
     }
 
     private void emit(Consumer<SSEEvent> consumer, AnalysisStage stage, String message) {

@@ -2,9 +2,13 @@ package com.alphamind.agent;
 
 import com.alphamind.model.dto.*;
 import com.alphamind.model.enums.AgentType;
+import com.alphamind.model.enums.ConfidenceLevel;
 import com.alphamind.model.enums.DebatePosition;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 中立Agent - 保持中立客观分析
@@ -24,8 +28,38 @@ public class NeutralAgent extends BaseAgent {
         TechnicalIndicatorsDTO tech = getContext("technicalIndicators");
         SentimentDataDTO sentiment = getContext("sentimentData");
 
-        String argument = generateNeutralAnalysis(market, tech, sentiment);
-        setContext("neutralArgument", argument);
+        String viewText;
+        String llmPrompt = String.format("""
+                股票: %s, 当前价: ¥%.2f
+                技术评分: %d/100, 舆情评分: %.0f/100
+                请从客观中立立场，列出该股相等分量的多空双方因素，并给出情景分析。
+                """,
+                market != null ? market.getStockName() : "N/A",
+                market != null ? market.getCurrentPrice() : 0,
+                tech != null ? tech.getTechnicalScore() : 0,
+                sentiment != null ? sentiment.getSentimentScore() * 100 : 0);
+        String llmResult = llmCall(getSystemPrompt(), llmPrompt);
+        viewText = llmResult != null ? llmResult : generateNeutralAnalysis(market, tech, sentiment);
+
+        List<String> reasons = extractNeutralReasons(market, tech, sentiment);
+        double confValue = 0.60; // 中立立场置信度中性
+
+        DebateViewDTO neutralView = DebateViewDTO.builder()
+                .position(DebatePosition.NEUTRAL)
+                .agentType(AgentType.NEUTRAL)
+                .view(viewText)
+                .reasons(reasons)
+                .keyPoints(reasons.stream().limit(3).toList())
+                .targetPrice(null) // 中立不给出目标价
+                .upsidePotential(null)
+                .confidence(ConfidenceDTO.builder()
+                        .value(confValue)
+                        .level(ConfidenceLevel.MEDIUM)
+                        .explanation("中立客观，不偏任何一方")
+                        .build())
+                .build();
+
+        setContext("neutralView", neutralView);
         return report;
     }
 
@@ -94,6 +128,29 @@ public class NeutralAgent extends BaseAgent {
 
     public int getVoteWeight() {
         return 1;
+    }
+
+    private List<String> extractNeutralReasons(MarketDataDTO market, TechnicalIndicatorsDTO tech, SentimentDataDTO sentiment) {
+        List<String> reasons = new ArrayList<>();
+        if (tech != null) {
+            int score = tech.getTechnicalScore();
+            if (score >= 60) reasons.add("技术面偶尔偏多，评分 " + score + "/100");
+            else if (score <= 40) reasons.add("技术面偶尔偏空，评分 " + score + "/100");
+            else reasons.add("技术面方向未明，评分 " + score + "/100");
+        }
+        if (market != null && market.getPe() != null) {
+            if (market.getPe() > 0 && market.getPe() < 20) reasons.add("低估值对多头有利，但需观察基本面贔写风险");
+            else if (market.getPe() > 50) reasons.add("高估值对空头有利，但需评估成长性支撑");
+            else reasons.add("PE " + String.format("%.1f", market.getPe()) + "，处于合理区间");
+        }
+        if (sentiment != null) {
+            double score = sentiment.getSentimentScore();
+            int posCount = sentiment.getPositiveFactors() != null ? sentiment.getPositiveFactors().size() : 0;
+            int negCount = sentiment.getNegativeFactors() != null ? sentiment.getNegativeFactors().size() : 0;
+            reasons.add(String.format("舆情%d正面/%d负面，得分%.0f/100", posCount, negCount, score * 100));
+        }
+        if (reasons.isEmpty()) reasons.add("当前多空互博，建议观望为主，待信号明确后操作");
+        return reasons;
     }
 
     private String generateNeutralAnalysis(MarketDataDTO marketData, TechnicalIndicatorsDTO technical, SentimentDataDTO sentiment) {

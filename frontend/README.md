@@ -1,36 +1,54 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AlphaMind Frontend（Phase 6 脚手架）
 
-## Getting Started
+基于 Next.js 16 + React 19 + TypeScript + Zustand + ECharts 的前端应用。
 
-First, run the development server:
+本阶段目标是提供可扩展、可维护的前端工程骨架：
+
+- 统一应用壳层（`RootLayout` + `AppShell` + `Sidebar`）
+- 页面路由入口（`/`、`/chat`、`/history`、`/watchlist`）
+- API 访问层与类型定义（`src/api` + `src/types`）
+- 状态管理基线（`src/stores`）
+- 统一导航配置（`src/config/navigation.ts`）
+
+## 本地开发
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+打开 `http://localhost:3000`。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 构建与检查
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run lint
+npm run build
+```
 
-## Learn More
+## 目录结构（脚手架层）
 
-To learn more about Next.js, take a look at the following resources:
+```text
+src/
+├── app/                    # App Router 页面入口
+├── api/                    # REST API 客户端与请求封装
+├── components/
+│   ├── layout/             # 应用壳层（Sidebar / AppShell）
+│   ├── common/             # 通用组件
+│   ├── chart/              # 图表组件
+│   ├── analysis/           # 分析结果相关组件
+│   └── agent/              # Agent 会话相关组件
+├── config/                 # 全局配置（导航、常量等）
+├── hooks/                  # 自定义 hooks
+├── stores/                 # Zustand 状态管理
+├── types/                  # TS 类型定义
+└── utils/                  # 工具函数
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 扩展约定
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. 新页面优先放在 `src/app/<route>/page.tsx`。
+2. 新导航项统一在 `src/config/navigation.ts` 维护。
+3. 新业务 API 先补 `src/types` 类型，再补 `src/api` 调用。
+4. 全局状态优先分域建 store，避免单一超大 store。
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

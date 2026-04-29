@@ -160,6 +160,7 @@ export interface ConfidenceInterval {
 // 辩论观点
 export interface DebateView {
   position: DebatePosition;
+  agentType?: AgentType;
   view: string;
   reasons: string[];
   targetPrice?: number;
@@ -201,6 +202,8 @@ export interface AnalysisReport {
   technicalIndicators: TechnicalIndicators;
   sentimentData: SentimentData;
   judgment: Judgment;
+  /** 辩论模式下三方各自的观点 */
+  debateViews?: DebateView[];
   createdAt: string;
 }
 

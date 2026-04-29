@@ -2,9 +2,13 @@ package com.alphamind.agent;
 
 import com.alphamind.model.dto.*;
 import com.alphamind.model.enums.AgentType;
+import com.alphamind.model.enums.ConfidenceLevel;
 import com.alphamind.model.enums.DebatePosition;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 多头Agent - 从看多角度分析股票
@@ -24,9 +28,40 @@ public class BullAgent extends BaseAgent {
         TechnicalIndicatorsDTO tech = getContext("technicalIndicators");
         SentimentDataDTO sentiment = getContext("sentimentData");
 
-        String argument = generateBullArgument(market, tech, sentiment);
-        // 存储辩论观点供Arbitrator使用
-        setContext("bullArgument", argument);
+        // 优先尝试 LLM，退而使用模板
+        String viewText;
+        String llmPrompt = buildBullPrompt(market, tech, sentiment, "请从多头立场给出该股的核心看多论点和目标价格。");
+        String llmResult = llmCall(getSystemPrompt(), llmPrompt);
+        viewText = llmResult != null ? llmResult : generateBullArgument(market, tech, sentiment);
+
+        List<String> reasons = extractBullReasons(market, tech, sentiment);
+        double targetPrice = market != null ? market.getCurrentPrice() * 1.15 : 0;
+        double upside = 15.0;
+        double confValue = tech != null ? Math.min(0.92, 0.40 + tech.getTechnicalScore() / 120.0) : 0.60;
+        ConfidenceLevel confLevel = confValue >= 0.70 ? ConfidenceLevel.HIGH
+                : confValue >= 0.50 ? ConfidenceLevel.MEDIUM : ConfidenceLevel.LOW;
+
+        DebateViewDTO bullView = DebateViewDTO.builder()
+                .position(DebatePosition.BULLISH)
+                .agentType(AgentType.BULL)
+                .view(viewText)
+                .reasons(reasons)
+                .keyPoints(reasons.stream().limit(3).toList())
+                .targetPrice(targetPrice)
+                .upsidePotential(String.format("+%.1f%%", upside))
+                .confidence(ConfidenceDTO.builder()
+                        .value(confValue)
+                        .level(confLevel)
+                        .explanation("基于技术面和舆情综合评估")
+                        .build())
+                .attackPoints(List.of(
+                        "即便短期回调，中长期上涨逻辑依然成立",
+                        "空头所指风险已在现价中充分定价",
+                        "当前位置属于中期起点区间，不适合做空"
+                ))
+                .build();
+
+        setContext("bullView", bullView);
         return report;
     }
 
@@ -100,6 +135,29 @@ public class BullAgent extends BaseAgent {
                 tech != null ? tech.getTechnicalScore() : 0,
                 sentiment != null ? sentiment.getSentimentScore() * 100 : 0,
                 question);
+    }
+
+    private List<String> extractBullReasons(MarketDataDTO market, TechnicalIndicatorsDTO tech, SentimentDataDTO sentiment) {
+        List<String> reasons = new ArrayList<>();
+        if (tech != null) {
+            if (tech.getMacd() != null && tech.getMacd().getHistogram() > 0)
+                reasons.add("MACD红柱持续放大，多头趋势确认");
+            if (tech.getKdj() != null && tech.getKdj().getK() > tech.getKdj().getD())
+                reasons.add("KDJ金叉形成，短期动能充足");
+            if (tech.getRsi() != null && tech.getRsi().getRsi12() < 65 && tech.getRsi().getRsi12() > 40)
+                reasons.add("RSI 处于健康多头区间，进入时机尚佳");
+            if (tech.getTechnicalScore() >= 60)
+                reasons.add("综合技术评分 " + tech.getTechnicalScore() + "/100，超越多数股票");
+        }
+        if (market != null && market.getPe() != null && market.getPe() > 0 && market.getPe() < 35)
+            reasons.add("PE " + String.format("%.1f", market.getPe()) + "，估値仍具吸引力");
+        if (sentiment != null && sentiment.getSentimentScore() > 0.55)
+            reasons.add("舆情评分 " + String.format("%.0f", sentiment.getSentimentScore() * 100) + "/100，机构持续乐观");
+        if (reasons.isEmpty()) {
+            reasons.add("当前价格处于合理区间，具备上涨潜力");
+            reasons.add("市场整体环境有利，板块轮动进入强势");
+        }
+        return reasons;
     }
 
     private String generateBullArgument(MarketDataDTO marketData, TechnicalIndicatorsDTO technical, SentimentDataDTO sentiment) {

@@ -8,6 +8,7 @@ import type {
   TechnicalIndicators,
   SentimentData,
   Judgment,
+  DebateView,
 } from "@/types";
 
 interface AnalysisState {
@@ -21,6 +22,7 @@ interface AnalysisState {
   sentimentData: SentimentData | null;
   judgment: Judgment | null;
   finalSignal: TradeSignal | null;
+  debateViews: DebateView[] | null;
   error: string | null;
 
   setCurrentStock: (code: string, name: string) => void;
@@ -31,6 +33,7 @@ interface AnalysisState {
   setSentimentData: (data: SentimentData) => void;
   setJudgment: (data: Judgment) => void;
   setFinalSignal: (signal: TradeSignal) => void;
+  setDebateViews: (views: DebateView[] | null) => void;
   setError: (error: string | null) => void;
   handleSSEEvent: (event: SSEEvent) => void;
   reset: () => void;
@@ -47,6 +50,7 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
   sentimentData: null,
   judgment: null,
   finalSignal: null,
+  debateViews: null,
   error: null,
 
   setCurrentStock: (code, name) =>
@@ -66,6 +70,8 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
   setJudgment: (data) => set({ judgment: data }),
 
   setFinalSignal: (signal) => set({ finalSignal: signal }),
+
+  setDebateViews: (views) => set({ debateViews: views }),
 
   setError: (error) => set({ error, isAnalyzing: false }),
 
@@ -89,6 +95,15 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
           set({ finalSignal: event.data as TradeSignal });
         else if (agentType === "ARBITRATOR" || agentType === "DEBATE")
           set({ judgment: event.data as Judgment });
+        else if (agentType === "BULL" || agentType === "BEAR" || agentType === "NEUTRAL") {
+          // 累积三方辩论观点
+          set((state) => ({
+            debateViews: [
+              ...(state.debateViews ?? []),
+              event.data as DebateView,
+            ],
+          }));
+        }
         break;
       }
       case "complete":
@@ -112,6 +127,7 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
       sentimentData: null,
       judgment: null,
       finalSignal: null,
+      debateViews: null,
       error: null,
     }),
 }));
