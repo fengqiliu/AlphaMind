@@ -51,6 +51,25 @@ REDIS_PASSWORD=<password>
 
 ## Architecture
 
+### Strategy System
+
+The strategy system uses a layered configuration with `StrategyType` enums (`CONSERVATIVE`/`BALANCED`/`AGGRESSIVE`) and `StrategyProfile` implementations:
+
+- **Position ratios**: CONSERVATIVE=30%, BALANCED=50%, AGGRESSIVE=80%
+- **Stop loss**: CONSERVATIVE=5%, BALANCED=7%, AGGRESSIVE=10%
+- **Holding periods**: CONSERVATIVE=45 days, BALANCED=30 days, AGGRESSIVE=15 days
+- **Default modes**: AGGRESSIVE→PIPELINE, others→DEBATE (via `StrategyProfile.getDefaultMode()`)
+
+### AnalysisMode and Mode Resolution
+
+`AnalysisMode` enum has two values: `PIPELINE` and `DEBATE`. Mode resolution follows this priority:
+
+1. `mode` parameter if provided (e.g., `?mode=PIPELINE`)
+2. `enableDebate` boolean (legacy compatibility): `true`→DEBATE, `false`→PIPELINE
+3. Strategy default from `StrategyModeResolver.resolve(mode, enableDebate, strategy)`
+
+The `StrategyModeResolver` (`backend/src/main/java/com/alphamind/strategy/`) handles the priority logic. AGGRESSIVE strategy defaults to PIPELINE; CONSERVATIVE and BALANCED default to DEBATE.
+
 ### Backend (Spring Boot + Spring AI)
 
 **Agent System** (`backend/src/main/java/com/alphamind/agent/`):
@@ -132,13 +151,14 @@ GET  /api/v1/chat/stream/{sessionId}?message={msg}&agentType=PORTFOLIO
 - `BaseAgent.llmCall()` is optional. If no `ChatClient` is available or the call fails, agents fall back to template output instead of failing the request
 - All REST endpoints return `ApiResponse<T>` envelope with `code`, `message`, and `data`
 - Frontend strategy values are lowercase (`conservative`/`balanced`/`aggressive`); backend `StrategyTypeConverter` accepts case-insensitive input
+- Mode resolution: `mode` param > `enableDebate` > strategy default. AGGRESSIVE→PIPELINE, others→DEBATE
 - Stock search uses query parameter `query`, not `keyword`; watchlist defaults `userId` to `default`
 - Frontend code should use relative `/api/v1/...` URLs; `frontend/next.config.ts` rewrites these to `http://localhost:8080/api/:path*`
 - User-facing copy, prompts, and domain text are in Chinese — keep new UI strings consistent
 
 ## Important Notes
 
-- Before modifying frontend code, read `frontend/AGENTS.md` — Next.js 16 has breaking changes from earlier versions
+- Before modifying frontend code, read `frontend/AGENTS.md` and `frontend/CLAUDE.md` — Next.js 16 has breaking changes from earlier versions
 - Backend has test infrastructure configured but no committed test classes (`mvn test` is mainly a compile and Surefire baseline check)
 - Redis is optional; `MemoryService` falls back to local in-memory storage when Redis is unavailable
 - Local backend development uses `dev` Spring profile — `application-dev.yml` disables production DB auto-configuration
