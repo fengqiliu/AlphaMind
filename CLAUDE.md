@@ -36,6 +36,20 @@ mvn -Dtest=ClassName test
 mvn -Dtest=ClassName#methodName test
 ```
 
+### E2E Tests
+
+```bash
+cd e2e && npx playwright test
+```
+
+### Docker Compose
+
+```bash
+docker compose up -d --build
+```
+
+Services: frontend (3000), backend (8080), PostgreSQL (5432), Redis (6379)
+
 ### Environment Variables
 
 ```bash
@@ -69,6 +83,12 @@ The strategy system uses a layered configuration with `StrategyType` enums (`CON
 3. Strategy default from `StrategyModeResolver.resolve(mode, enableDebate, strategy)`
 
 The `StrategyModeResolver` (`backend/src/main/java/com/alphamind/strategy/`) handles the priority logic. AGGRESSIVE strategy defaults to PIPELINE; CONSERVATIVE and BALANCED default to DEBATE.
+
+### Agent Context and Thread Safety
+
+All agents share state via `ThreadLocal<Map<String,Object>>`. **Always call `clearContext()` after every request** to prevent thread-pool leaks. Common context keys: `stockCode`, `stockName`, `strategy`, `marketData`, `technicalIndicators`, `sentimentData`, `tradeSignal`, `confidence`, `sessionId`, `contextSummary`.
+
+The `BaseAgent.llmCall()` follows a fallback chain: `LlmManager` (multi-model) → `ChatClient` (single) → template output. Never throw when LLM is unavailable.
 
 ### Backend (Spring Boot + Spring AI)
 
@@ -147,11 +167,8 @@ GET  /api/v1/chat/stream/{sessionId}?message={msg}&agentType=PORTFOLIO
 
 ## Key Conventions
 
-- All agents extend `BaseAgent` and share state via `setContext()`/`getContext()`. Common keys: `stockCode`, `stockName`, `strategy`, `marketData`, `technicalIndicators`, `sentimentData`, `tradeSignal`, `confidence`, `sessionId`, `contextSummary`
-- `BaseAgent.llmCall()` is optional. If no `ChatClient` is available or the call fails, agents fall back to template output instead of failing the request
 - All REST endpoints return `ApiResponse<T>` envelope with `code`, `message`, and `data`
 - Frontend strategy values are lowercase (`conservative`/`balanced`/`aggressive`); backend `StrategyTypeConverter` accepts case-insensitive input
-- Mode resolution: `mode` param > `enableDebate` > strategy default. AGGRESSIVE→PIPELINE, others→DEBATE
 - Stock search uses query parameter `query`, not `keyword`; watchlist defaults `userId` to `default`
 - Frontend code should use relative `/api/v1/...` URLs; `frontend/next.config.ts` rewrites these to `http://localhost:8080/api/:path*`
 - User-facing copy, prompts, and domain text are in Chinese — keep new UI strings consistent
