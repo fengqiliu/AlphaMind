@@ -48,6 +48,24 @@ spring:
       host: localhost
       port: 6379
       password: ${REDIS_PASSWORD:}
+
+# Spring Boot Actuator - 健康检查与运维端点
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+      show-components: always
+  health:
+    redis:
+      enabled: true
+    db:
+      enabled: true
+
       database: 0
       timeout: 5000ms
       lettuce:

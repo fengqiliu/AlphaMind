@@ -40,6 +40,14 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // 组件卸载时关闭 EventSource，防止泄漏
+  useEffect(() => {
+    return () => {
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
+    };
+  }, []);
+
   useEffect(() => {
     scrollToBottom();
   }, [messages]);

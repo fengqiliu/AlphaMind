@@ -46,6 +46,7 @@ public class DebateOrchestrator {
     public AnalysisReportDTO runDebate(AnalysisReportDTO report, Consumer<SSEEvent> eventConsumer) {
         log.info("启动辩论系统: stockCode={}", report.getStockCode());
 
+        try {
         // ── Step 1: 多头分析师 ────────────────────────────────────────────────
         emitStage(eventConsumer, "多头分析师正在生成看多观点...");
         initContext(bullAgent, report);
@@ -90,6 +91,13 @@ public class DebateOrchestrator {
         log.info("辩论流程完成，最终立场: {}",
                 report.getJudgment() != null ? report.getJudgment().getFinalPosition() : "N/A");
         return report;
+        } finally {
+            // 确保无论成功还是异常，都释放所有辩论 Agent 的 ThreadLocal，防止线程池泄漏
+            bullAgent.clearContext();
+            bearAgent.clearContext();
+            neutralAgent.clearContext();
+            arbitratorAgent.clearContext();
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -23,13 +23,19 @@ import java.util.concurrent.ConcurrentHashMap;
  *       回退到单个 {@link ChatClient}（兼容旧注入方式），最终降级为模板输出。</li>
  *   <li>通过 {@link PromptManager} 实现运行时提示词版本管理；
  *       Agent 启动时自动将 {@link #getSystemPrompt()} 注册为默认版本。</li>
+ *   <li>上下文通过 {@link ThreadLocal} 隔离，保证多请求并发安全（Agent 为单例 Bean）。</li>
  * </ul>
  */
 @Slf4j
 public abstract class BaseAgent {
 
     protected final AgentType agentType;
-    protected final Map<String, Object> context;
+    /**
+     * 线程隔离的上下文 Map。每个请求线程独享一份，Agent 单例不再共享可变状态。
+     * 使用完毕后须调用 {@link #clearContext()} 以释放 ThreadLocal，避免线程池泄漏。
+     */
+    private final ThreadLocal<Map<String, Object>> contextHolder =
+            ThreadLocal.withInitial(ConcurrentHashMap::new);
     protected String modelName;
 
     // ── LLM 调用链（优先级：LlmManager > ChatClient > null）────────────────
@@ -50,7 +56,6 @@ public abstract class BaseAgent {
 
     protected BaseAgent(AgentType agentType) {
         this.agentType = agentType;
-        this.context = new ConcurrentHashMap<>();
     }
 
     /**
@@ -73,17 +78,21 @@ public abstract class BaseAgent {
 
     public void setModelName(String modelName) { this.modelName = modelName; }
 
-    public void setContext(String key, Object value) { context.put(key, value); }
+    public void setContext(String key, Object value) { contextHolder.get().put(key, value); }
 
     @SuppressWarnings("unchecked")
-    public <T> T getContext(String key) { return (T) context.get(key); }
+    public <T> T getContext(String key) { return (T) contextHolder.get().get(key); }
 
     @SuppressWarnings("unchecked")
     public <T> T getContext(String key, T defaultValue) {
-        return (T) context.getOrDefault(key, defaultValue);
+        return (T) contextHolder.get().getOrDefault(key, defaultValue);
     }
 
-    public void clearContext() { context.clear(); }
+    /**
+     * 清除当前线程的 Agent 上下文并释放 ThreadLocal，防止线程池复用时数据泄漏。
+     * {@link com.alphamind.service.PipelineOrchestrator} 在每个 Agent 执行前调用此方法。
+     */
+    public void clearContext() { contextHolder.remove(); }
 
     // ──────────────────────────────────────────────────────────────────────
     // 抽象接口

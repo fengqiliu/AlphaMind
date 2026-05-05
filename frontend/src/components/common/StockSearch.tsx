@@ -46,20 +46,24 @@ export function StockSearch({
       return;
     }
 
+    let cancelled = false;
     debounceRef.current = setTimeout(async () => {
       setIsLoading(true);
       try {
         const data = await searchStocks(query);
-        setResults(data);
+        if (!cancelled) setResults(data);
       } catch (e) {
-        console.error("Search error:", e);
-        setResults([]);
+        if (!cancelled) {
+          console.error("Search error:", e);
+          setResults([]);
+        }
       } finally {
-        setIsLoading(false);
+        if (!cancelled) setIsLoading(false);
       }
     }, 300);
 
     return () => {
+      cancelled = true;
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, [query]);

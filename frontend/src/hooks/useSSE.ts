@@ -30,7 +30,7 @@ export function useSSE() {
     };
 
     // 监听具名事件
-    const eventTypes = ["stage", "data", "complete", "error", "message"];
+    const eventTypes = ["stage", "data", "complete", "error", "message", "result"];
     eventTypes.forEach((eventType) => {
       es.addEventListener(eventType, (e: MessageEvent) => {
         try {

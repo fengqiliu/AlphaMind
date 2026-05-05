@@ -109,24 +109,24 @@ public class PortfolioAgent extends BaseAgent {
             1. 综合市场行情分析
             2. 结合技术分析结论
             3. 考量舆情和市场情绪
-            4. 根据策略类型调整建议
+            4. 根据策略类型（保守/平衡/激进）调整仓位、止损与持仓周期
             5. 生成明确的买入/卖出/持有建议
-            6. 给出具体的目标价、止损价和持仓周期
+            6. 给出具体的目标价、止损价和建议持仓周期
 
             信号生成规则：
-            - 技术评分>70 + 舆情>60 → 买入
-            - 技术评分<40 + 舆情<40 → 卖出
+            - 技术评分>70 + 舆情>60 → 买入信号
+            - 技术评分<40 + 舆情<40 → 卖出信号
             - 其他情况 → 持有观望
 
-            止损原则：
-            - 保守策略: 止损设在-5%
-            - 平衡策略: 止损设在-7%
-            - 激进策略: 止损设在-10%
+            止损原则（根据传入的策略参数动态决定）：
+            - 保守策略：仓位较低，止损较严，持仓周期较长
+            - 平衡策略：仓位适中，止损适中，持仓周期适中
+            - 激进策略：仓位较高，止损宽松，持仓周期较短
 
             回答要求：
-            - 给出明确的交易信号
-            - 提供具体的价格和仓位建议
-            - 解释决策依据
+            - 给出明确的交易信号（买入/持有/卖出）
+            - 结合当前策略参数（仓位比例、止损点位、持仓周期）提供具体建议
+            - 用简洁专业的中文解释决策依据
             """;
     }
 
@@ -136,15 +136,19 @@ public class PortfolioAgent extends BaseAgent {
                 综合分析数据如下：
                 - 股票: %s (%s) 当前价: ¥%.2f 涨跌: %+.2f%%
                 - 技术评分: %d/100 | 舆情评分: %.0f/100
-                - 策略类型: %s | 推荐操作: %s
-                - 目标价: ¥%.2f | 止损价: ¥%.2f
+                - 策略类型: %s（仓位 %.0f%%，止损 %.0f%%，持仓 %d天）
+                - 推荐操作: %s | 目标价: ¥%.2f | 止损价: ¥%.2f
 
                 请给出简洁专业的投资理由（200字内）。
                 """,
                 market.getStockName(), market.getStockCode(),
                 market.getCurrentPrice(), market.getChangePercent() != null ? market.getChangePercent() : 0,
                 tech.getTechnicalScore(), sentiment.getSentimentScore() * 100,
-                strategy.getLabel(), signal.getType().getLabel(),
+                strategy.getLabel(),
+                strategy.getPositionRatio() * 100,
+                strategy.getStopLossRatio() * 100,
+                strategy.getHoldingPeriodDays(),
+                signal.getType().getLabel(),
                 signal.getTargetPrice(), signal.getStopLoss());
         return llmCall(getSystemPrompt(), prompt);
     }

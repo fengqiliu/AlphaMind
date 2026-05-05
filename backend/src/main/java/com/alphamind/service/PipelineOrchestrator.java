@@ -94,6 +94,12 @@ public class PipelineOrchestrator {
             log.error("流水线分析失败: stockCode={}", stockCode, e);
             emitError(eventConsumer, e.getMessage());
             throw new RuntimeException("分析失败: " + e.getMessage(), e);
+        } finally {
+            // 确保无论成功还是异常，都释放所有 Agent 的 ThreadLocal，防止线程池泄漏
+            marketAgent.clearContext();
+            technicalAgent.clearContext();
+            sentimentAgent.clearContext();
+            portfolioAgent.clearContext();
         }
     }
 

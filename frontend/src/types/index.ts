@@ -237,10 +237,28 @@ export interface WatchlistItem {
   changePercent?: number;
 }
 
+export interface WeeklyStockRecommendation {
+  rank: number;
+  weekLabel: string;
+  stockCode: string;
+  stockName: string;
+  industry: string;
+  market: string;
+  currentPrice: number;
+  changePercent: number;
+  lowPositionScore: number;
+  valueScore: number;
+  compositeScore: number;
+  summary: string;
+  highlights: string[];
+}
+
 // 股票搜索结果
 export interface StockSearchResult {
   code: string;
   name: string;
   market: string;
   industry: string;
+  currentPrice?: number;
+  changePercent?: number;
 }

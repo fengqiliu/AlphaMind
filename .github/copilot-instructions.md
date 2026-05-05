@@ -1,50 +1,62 @@
 # Copilot Instructions for AlphaMind
 
-## Build, test, and lint commands
+> **Detailed docs**: [系统设计说明书](../docs/股票多Agent分析系统设计说明书.md) | [Frontend guide](../frontend/AGENTS.md) | [CLAUDE.md](../CLAUDE.md)
 
-### Frontend (`frontend`)
+## Commands
 
-- `npm install`
-- `npm run dev`
-- `npm run lint`
-- `npm run build`
+| Area | Command |
+|------|---------|
+| Frontend dev | `cd frontend && npm run dev` |
+| Frontend lint/build | `npm run lint` / `npm run build` |
+| Backend dev | `cd backend && SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run` |
+| Backend test | `mvn test` (compile + Surefire baseline; no committed test classes yet) |
+| Single test | `mvn -Dtest=ClassName#methodName test` |
+| E2E | `cd e2e && npx playwright test` |
 
-There is no frontend test runner configured in `frontend/package.json`.
+## Architecture
 
-### Backend (`backend`)
+Spring Boot 3.4 backend (`backend/`) + Next.js 16 App Router frontend (`frontend/`).
 
-- `SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run`
-- `mvn test`
-- `mvn clean package`
+**Analysis pipeline**: `AnalysisController` → `PipelineOrchestrator` → `MarketAgent` → `TechnicalAgent` → `SentimentAgent` → `PortfolioAgent`  
+**Debate mode**: same context, then `BullAgent` / `BearAgent` / `NeutralAgent` → `ArbitratorAgent` → `AnalysisReportDTO`
 
-Single-test syntax:
+SSE stream endpoint: `GET /api/v1/analysis/stream` — progress events carry `stage`; agent data events carry `agentType` + `data`; final event is named `result` with `ApiResponse<AnalysisReportDTO>` payload.
 
-- `mvn -Dtest=ClassName test`
-- `mvn -Dtest=ClassName#methodName test`
+## Critical conventions
 
-There are currently no committed backend test classes under `backend/src/test`, so `mvn test` is mainly a compile and Surefire baseline check.
+### Backend
+- **Agent pattern**: all agents extend `BaseAgent`. Shared state lives in a `ThreadLocal<Map<String,Object>>` — call `clearContext()` after every request to prevent thread-pool leaks. Common context keys: `stockCode`, `stockName`, `strategy`, `marketData`, `technicalIndicators`, `sentimentData`, `tradeSignal`, `confidence`, `sessionId`, `contextSummary`.
+- **LLM fallback chain**: `LlmManager` (multi-model) → `ChatClient` (single) → template output. Never throw when LLM is unavailable; fall back gracefully.
+- **Mode resolution priority**: `mode` param > `enableDebate` boolean > strategy default. AGGRESSIVE defaults to PIPELINE; CONSERVATIVE/BALANCED default to DEBATE. Logic lives in `StrategyModeResolver`.
+- **API envelope**: all REST responses use `ApiResponse<T>` with `code`, `message`, `data`.
+- **Dev profile**: `application-dev.yml` disables MySQL/JPA auto-config. Always start with `SPRING_PROFILES_ACTIVE=dev` locally.
 
-## High-level architecture
+### Frontend
+- **No hard-coded backend URLs.** Always use relative `/api/v1/...`; `next.config.ts` rewrites to `http://localhost:8080`.
+- **No mocks.** The app is wired to real APIs. Do not reintroduce mock flows for analysis, chat, history, or watchlist.
+- **SSE via `EventSource`**, not `fetch`. Always close the `EventSource` in a cleanup function to avoid leaks.
+- **Zustand stores** in `src/stores/` — `useAnalysisStore`, `useChatStore`, `useWatchlistStore`. Each store owns its domain state and exposes an `handleSSEEvent` or equivalent action.
+- **Strategy values are lowercase** on the frontend (`conservative`, `balanced`, `aggressive`). Backend converter is case-insensitive.
+- **Stock search param**: `query` (not `keyword`). Watchlist `userId` defaults to `"default"`.
+- **Chinese copy**: all user-visible text, agent prompts, and domain messages must be in Chinese.
+- **Next.js 16 breaking changes**: read `frontend/AGENTS.md` before any frontend work — it points to in-tree docs in `node_modules/next/dist/docs/`.
 
-AlphaMind is a two-part system: a Spring Boot 3.4 backend in `backend/` and a Next.js 16 App Router frontend in `frontend/`.
+### Storage
+- Analysis history: in-memory `ArrayDeque`, last 50 reports, reset on restart.
+- Chat history: Redis → in-memory fallback (`MemoryService`).
+- Watchlist: persisted via `StockController` / repository layer.
 
-The main analysis flow is `AnalysisController -> PipelineOrchestrator -> MarketAgent -> TechnicalAgent -> SentimentAgent -> PortfolioAgent`. When debate mode is enabled, the pipeline keeps the same report context and lets `BullAgent`, `BearAgent`, and `NeutralAgent` feed `ArbitratorAgent` before returning the final `AnalysisReportDTO`.
+## Key files
 
-Analysis streaming is server-sent events, not polling. `AnalysisController` emits incremental SSE updates during orchestration, then sends a final named `result` event whose payload is an `ApiResponse<AnalysisReportDTO>`. In the backend SSE model, progress events use `stage`, while data payload events use `agentType` plus `data`.
-
-Chat is separate from the pipeline. `ChatController` stores per-session stock context in its in-memory `sessionContexts` map, routes each message to the selected agent, and asks `MemoryService` for recent context summaries. `MemoryService` prefers Redis for chat history, but falls back to local in-process memory when Redis is unavailable.
-
-The frontend uses page-level App Router entries in `frontend/src/app/*`, Zustand feature stores in `frontend/src/stores/*`, Axios for non-streaming REST calls, and `EventSource` for streaming analysis/chat. Local browser requests stay relative to `/api/v1`; `frontend/next.config.ts` rewrites `/api/:path*` to `http://localhost:8080/api/:path*`, so frontend code should usually keep using relative `/api/v1/...` URLs instead of hard-coding the backend origin.
-
-## Key conventions
-
-- All agent implementations extend `BaseAgent` and pass shared state through `setContext()` / `getContext()`. Common keys include `stockCode`, `stockName`, `strategy`, `marketData`, `technicalIndicators`, `sentimentData`, `tradeSignal`, `confidence`, `sessionId`, and `contextSummary`.
-- `BaseAgent.llmCall()` is optional by design. If no `ChatClient` is available, or the model call fails, agents are expected to fall back to template output instead of failing the whole request flow.
-- REST endpoints consistently return the `ApiResponse<T>` envelope with `code`, `message`, and `data`.
-- Frontend strategy values are lowercase strings (`conservative`, `balanced`, `aggressive`). Backend `StrategyTypeConverter` accepts case-insensitive input and maps it to the enum, so preserve the lowercase frontend values.
-- The frontend is already wired to real backend APIs and SSE. Do not reintroduce mock analysis, chat, history, or watchlist flows when modifying the current app.
-- Analysis history and chat history use different storage paths. `AnalysisController` keeps only the most recent 50 reports in an in-memory deque, while `MemoryService` stores chat history in Redis with an in-memory fallback.
-- Stock search uses the query parameter name `query`, not `keyword`. Watchlist endpoints default `userId` to `default`.
-- User-facing copy, prompts, and most inline domain text are written in Chinese. Keep new UI strings, agent prompts, and API-facing messages consistent with that tone unless a file already uses another language.
-- If you modify the frontend, read `frontend/AGENTS.md` and `frontend/CLAUDE.md` first. This repo explicitly treats Next.js 16 behavior as a source of breaking changes that should be checked against current docs.
-- Local backend development is expected to use the `dev` Spring profile. `application-dev.yml` disables MySQL/JPA auto-configuration, so backend tasks that do not need the production database should start with `SPRING_PROFILES_ACTIVE=dev`.
+| File | Purpose |
+|------|---------|
+| `backend/src/main/java/com/alphamind/agent/BaseAgent.java` | Agent contract + ThreadLocal context + LLM fallback chain |
+| `backend/src/main/java/com/alphamind/service/PipelineOrchestrator.java` | Pipeline + debate orchestration |
+| `backend/src/main/java/com/alphamind/controller/AnalysisController.java` | SSE streaming endpoint |
+| `backend/src/main/java/com/alphamind/strategy/StrategyModeResolver.java` | Mode resolution priority logic |
+| `backend/src/main/resources/application-dev.yml` | Dev profile — disables DB |
+| `frontend/src/stores/analysis.ts` | Zustand analysis state + SSE event handler |
+| `frontend/src/hooks/useSSE.ts` | Reusable EventSource hook |
+| `frontend/src/api/client.ts` | Axios instance with base URL `/api/v1` |
+| `frontend/next.config.ts` | API proxy rewrite rules |
+| `frontend/src/types/index.ts` | Shared TypeScript types |

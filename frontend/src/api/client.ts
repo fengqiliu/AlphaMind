@@ -1,6 +1,7 @@
 import axios from "axios";
 import type {
   StockSearchResult,
+  WeeklyStockRecommendation,
   WatchlistItem,
   AnalysisReport,
   ChatMessage,
@@ -22,6 +23,13 @@ export const searchStocks = async (
 
 export const getWatchlist = async (): Promise<WatchlistItem[]> => {
   const { data } = await api.get("/stocks/watchlist");
+  return data.data;
+};
+
+export const getWeeklyValuePicks = async (): Promise<
+  WeeklyStockRecommendation[]
+> => {
+  const { data } = await api.get("/stocks/recommendations/weekly");
   return data.data;
 };
 

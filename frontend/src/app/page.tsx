@@ -1,18 +1,22 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useAnalysisStore } from "@/stores/analysis";
+import { useSSE } from "@/hooks/useSSE";
 import { StockSearch } from "@/components/common/StockSearch";
 import { Button } from "@/components/common/Button";
 import { KLineChart } from "@/components/chart/KLineChart";
 import { TechnicalIndicatorsPanel } from "@/components/chart/TechnicalIndicators";
 import { AnalysisResult } from "@/components/analysis/AnalysisResult";
 import { DebateResult } from "@/components/analysis/DebateResult";
+import { WeeklyValuePicks } from "@/components/analysis/WeeklyValuePicks";
+import { getWeeklyValuePicks } from "@/api/client";
 import type {
   AnalysisMode as AnalysisModeType,
   AnalysisReport,
   StockSearchResult,
   StrategyType,
+  WeeklyStockRecommendation,
 } from "@/types";
 import {
   AnalysisMode,
@@ -38,7 +42,46 @@ import {
 export default function AnalysisPage() {
   const [strategy, setStrategy] = useState<StrategyType>(ST.BALANCED);
   const [analysisMode, setAnalysisMode] = useState<AnalysisModeType>(AnalysisMode.PIPELINE);
+  const [weeklyPicks, setWeeklyPicks] = useState<WeeklyStockRecommendation[]>([]);
+  const [weeklyPicksLoading, setWeeklyPicksLoading] = useState(true);
+  const [weeklyPicksError, setWeeklyPicksError] = useState<string | null>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const { connect: connectSSE, disconnect: disconnectSSE } = useSSE();
+
+  // 组件卸载时关闭 SSE 连接
+  useEffect(() => {
+    return () => disconnectSSE();
+  }, [disconnectSSE]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadWeeklyPicks = async () => {
+      setWeeklyPicksLoading(true);
+      try {
+        const data = await getWeeklyValuePicks();
+        if (!cancelled) {
+          setWeeklyPicks(data);
+          setWeeklyPicksError(null);
+        }
+      } catch (err) {
+        console.error("Weekly picks load error:", err);
+        if (!cancelled) {
+          setWeeklyPicksError("本周推荐加载失败，请稍后再试");
+        }
+      } finally {
+        if (!cancelled) {
+          setWeeklyPicksLoading(false);
+        }
+      }
+    };
+
+    void loadWeeklyPicks();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const {
     currentStockCode,
@@ -71,6 +114,10 @@ export default function AnalysisPage() {
     setCurrentStock(stock.code, stock.name);
   };
 
+  const handleWeeklyPickSelect = (pick: WeeklyStockRecommendation) => {
+    setCurrentStock(pick.stockCode, pick.stockName);
+  };
+
   const handleStartAnalysis = () => {
     if (!currentStockCode) return;
 
@@ -79,58 +126,43 @@ export default function AnalysisPage() {
     setCurrentStage("START", "正在连接分析服务...");
 
     const url = `/api/v1/analysis/stream?stockCode=${encodeURIComponent(currentStockCode)}&strategy=${strategy}&mode=${analysisMode}`;
-    const es = new EventSource(url);
-    eventSourceRef.current = es;
 
-    const eventTypes = ["stage", "data", "complete", "error"];
-    eventTypes.forEach((type) => {
-      es.addEventListener(type, (e: MessageEvent) => {
-        try {
-          const data = JSON.parse(e.data);
-          handleSSEEvent({ event: type as "stage" | "data" | "complete" | "error", ...data });
-          if (type === "complete" || type === "error") {
-            es.close();
-            eventSourceRef.current = null;
-            setIsAnalyzing(false);
+    const es = connectSSE(url, {
+      onMessage: (eventType, data) => {
+        const payload = data as Record<string, unknown>;
+        if (eventType === "result") {
+          const report = (payload?.data ?? payload) as Record<string, unknown>;
+          if (report) {
+            if (report.marketData) setMarketData(report.marketData as Parameters<typeof setMarketData>[0]);
+            if (report.technicalIndicators) setTechnicalIndicators(report.technicalIndicators as Parameters<typeof setTechnicalIndicators>[0]);
+            if (report.sentimentData) setSentimentData(report.sentimentData as Parameters<typeof setSentimentData>[0]);
+            if (report.tradeSignal) setFinalSignal(report.tradeSignal as Parameters<typeof setFinalSignal>[0]);
+            if (report.judgment) setJudgment(report.judgment as Parameters<typeof setJudgment>[0]);
+            setDebateViews((report.debateViews as Parameters<typeof setDebateViews>[0]) ?? null);
           }
-        } catch {
-          // ignore parse errors
+          setIsAnalyzing(false);
+          disconnectSSE();
+        } else if (eventType === "complete") {
+          setIsAnalyzing(false);
+          disconnectSSE();
+        } else if (eventType === "error") {
+          setError((payload?.message as string) || "分析失败");
+          setIsAnalyzing(false);
+          disconnectSSE();
+        } else {
+          handleSSEEvent({ event: eventType as "stage" | "data", ...payload });
         }
-      });
-    });
-
-    // 监听最终完整分析报告（result 事件携带完整 AnalysisReportDTO）
-    es.addEventListener("result", (e: MessageEvent) => {
-      try {
-        const payload = JSON.parse(e.data);
-        const report = payload?.data;
-        if (report) {
-          if (report.marketData) setMarketData(report.marketData);
-          if (report.technicalIndicators) setTechnicalIndicators(report.technicalIndicators);
-          if (report.sentimentData) setSentimentData(report.sentimentData);
-          if (report.tradeSignal) setFinalSignal(report.tradeSignal);
-          if (report.judgment) setJudgment(report.judgment);
-          if (report.debateViews) setDebateViews(report.debateViews);
-          else setDebateViews(null);
-        }
+      },
+      onError: () => {
+        setError("连接分析服务失败，请检查后端是否启动");
         setIsAnalyzing(false);
-        es.close();
-        eventSourceRef.current = null;
-      } catch {
-        // ignore parse errors
-      }
+      },
     });
-
-    es.onerror = () => {
-      setError("连接分析服务失败，请检查后端是否启动");
-      setIsAnalyzing(false);
-      es.close();
-      eventSourceRef.current = null;
-    };
+    eventSourceRef.current = es;
   };
 
   const handleStopAnalysis = () => {
-    eventSourceRef.current?.close();
+    disconnectSSE();
     eventSourceRef.current = null;
     reset();
     setIsAnalyzing(false);
@@ -198,6 +230,13 @@ export default function AnalysisPage() {
           </span>
         </div>
       </div>
+
+      <WeeklyValuePicks
+        picks={weeklyPicks}
+        isLoading={weeklyPicksLoading}
+        error={weeklyPicksError}
+        onSelect={handleWeeklyPickSelect}
+      />
 
       {/* Search & Control Bar */}
       <div className="glass-card-glow p-5 animate-enter delay-100">

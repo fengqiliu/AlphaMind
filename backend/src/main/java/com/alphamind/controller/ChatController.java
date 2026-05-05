@@ -121,7 +121,12 @@ public class ChatController {
                 .content(route.getContent())
                 .timestamp(userMessage.getTimestamp())
                 .build();
-        ChatMessage response = agent.chat(agentInput);
+        ChatMessage response;
+        try {
+            response = agent.chat(agentInput);
+        } finally {
+            agent.clearContext();
+        }
         memoryService.saveMessage(sessionId, response);
         persistMessage(sessionId, response, resolvedType.name());
 
@@ -158,13 +163,13 @@ public class ChatController {
         persistMessage(sessionId, userMessage, null);
 
         return Flux.create(emitter -> {
+            AgentRouter.RouteResult route = agentRouter.route(message, agentType);
+            BaseAgent agent = route.getAgent();
             try {
                 // 发送思考中状态
                 emitter.next("data: {\"event\":\"thinking\",\"message\":\"Agent正在分析...\"}\n\n");
 
                 // 路由消息：优先解析 @mention，否则使用显式 agentType
-                AgentRouter.RouteResult route = agentRouter.route(message, agentType);
-                BaseAgent agent = route.getAgent();
                 AgentType resolvedType = route.getAgentType();
                 initializeAgentContext(agent, context);
 
@@ -187,8 +192,19 @@ public class ChatController {
                 emitter.complete();
             } catch (Exception e) {
                 log.error("流式对话失败: sessionId={}", sessionId, e);
-                emitter.next("data: {\"event\":\"error\",\"message\":\"" + e.getMessage() + "\"}\n\n");
+                try {
+                    // 使用 ObjectMapper 序列化，防止消息内容中含特殊字符造成 JSON 注入
+                    String errorJson = objectMapper.writeValueAsString(
+                            java.util.Map.of("event", "error", "message",
+                                    e.getMessage() != null ? e.getMessage() : "处理失败"));
+                    emitter.next("data: " + errorJson + "\n\n");
+                } catch (Exception ex) {
+                    emitter.next("data: {\"event\":\"error\",\"message\":\"处理失败\"}\n\n");
+                }
                 emitter.complete();
+            } finally {
+                // 释放 agent ThreadLocal，防止线程池复用时数据泄漏
+                agent.clearContext();
             }
         });
     }

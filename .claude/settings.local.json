@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__plugin_serena_serena__list_dir",
+      "mcp__plugin_serena_serena__read_file",
+      "mcp__plugin_serena_serena__search_for_pattern",
+      "Skill(hookify:help)",
+      "Skill(hookify:list)",
+      "mcp__plugin_serena_serena__find_file",
+      "Bash(CLAUDE_PLUGIN_ROOT=/Users/Davinci/.claude/plugins/cache/claude-plugins-official/hookify/0742692199b4 python3 ~/.claude/plugins/cache/claude-plugins-official/hookify/0742692199b4/hooks/pretooluse.py)"
+    ]
+  },
+  "prefersReducedMotion": true,
+  "outputStyle": "Explanatory"
+}

@@ -29,6 +29,7 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 其他能力：
 
 - SSE 实时推送分析进度与各阶段数据
+- 每周推荐 3 支“低位 + 价值”兼顾的重点观察股票，可一键带入分析
 - 新浪财经实时行情接入，可通过配置开关切换
 - LLM 可选接入；未配置 API Key 时自动降级为模板响应
 - 分析历史持久化（PostgreSQL jsonb），支持完整反序列化还原
@@ -38,7 +39,7 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 
 ## 当前状态
 
-截至 2026-04-29，以下能力已完成并验证：
+截至 2026-05-05，以下能力已完成并验证：
 
 - 后端在 **Java 17** 环境下编译 0 错误
 - 后端通过 `dev` profile 启动，无需本地 MySQL 即可开发（使用 PostgreSQL dev 库）
@@ -49,7 +50,11 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 - 分析历史 `toDTO()` 完整还原所有 jsonb 字段及标量字段
 - 前端舆情分析卡片展示评分、利好/风险因素、媒体关注度
 - 前端 `SentimentData` 类型与后端 DTO 字段完全对齐
+- 首页新增“每周低位价值股”板块，自动展示本周精选 3 只股票
+- 后端新增周荐接口，返回排名、综合分、低位分、价值分与推荐亮点
 - CORS 通过配置文件管理，无硬编码通配符
+
+详细变更记录请见 [`changelog.md`](./changelog.md)。
 
 ---
 
@@ -319,10 +324,38 @@ DELETE /api/v1/chat/session/{sessionId}
 ```http
 GET    /api/v1/stocks/search?query=600519          # 参数名是 query，不是 keyword
 GET    /api/v1/stocks/{code}
+GET    /api/v1/stocks/recommendations/weekly       # 每周推荐 3 支低位价值股
 GET    /api/v1/stocks/watchlist?userId=default
 POST   /api/v1/stocks/watchlist/{code}?userId=default
 DELETE /api/v1/stocks/watchlist/{code}?userId=default
 ```
+
+#### 每周低位价值股推荐
+
+```http
+GET /api/v1/stocks/recommendations/weekly
+```
+
+返回固定 3 支本周推荐股票，字段包括：
+
+- `rank`：本周排名
+- `weekLabel`：周标识，如 `2026年第19周`
+- `stockCode` / `stockName`
+- `industry` / `market`
+- `currentPrice` / `changePercent`
+- `lowPositionScore`：低位分
+- `valueScore`：价值分
+- `compositeScore`：综合分
+- `summary`：推荐摘要
+- `highlights`：推荐亮点列表
+
+当前版本基于项目内置股票池进行启发式筛选，综合考虑：
+
+- 股票池内价格分位
+- 相对行业样本均价的折价幅度
+- 行业价值属性权重
+- 主板 / 创业板 / 科创板稳定性
+- 近期涨跌幅对应的回撤观察价值
 
 ---
 
@@ -330,7 +363,7 @@ DELETE /api/v1/stocks/watchlist/{code}?userId=default
 
 | 路由 | 功能 |
 | --- | --- |
-| `/` | 主分析页：股票搜索、策略/模式选择、SSE 实时进度、市场行情、舆情分析、K线图、技术指标、交易建议、辩论结果 |
+| `/` | 主分析页：每周低位价值股推荐、股票搜索、策略/模式选择、SSE 实时进度、市场行情、舆情分析、K线图、技术指标、交易建议、辩论结果 |
 | `/chat` | 对话页：选择 Agent、流式聊天 |
 | `/history` | 历史记录：查看过往分析报告 |
 | `/watchlist` | 自选股管理 |

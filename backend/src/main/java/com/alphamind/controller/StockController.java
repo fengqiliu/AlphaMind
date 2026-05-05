@@ -2,6 +2,7 @@ package com.alphamind.controller;
 
 import com.alphamind.model.dto.ApiResponse;
 import com.alphamind.model.dto.StockSearchResult;
+import com.alphamind.model.dto.WeeklyStockRecommendation;
 import com.alphamind.model.dto.WatchlistItem;
 import com.alphamind.service.StockService;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,16 @@ public class StockController {
         log.info("搜索股票: query={}, 结果数={}", query, results.size());
 
         return ApiResponse.success(results);
+    }
+
+    /**
+     * 获取每周低位价值股推荐
+     */
+    @GetMapping("/recommendations/weekly")
+    public ApiResponse<List<WeeklyStockRecommendation>> getWeeklyRecommendations() {
+        List<WeeklyStockRecommendation> recommendations = stockService.getWeeklyValueRecommendations();
+        log.info("获取每周低位价值股推荐: 数量={}", recommendations.size());
+        return ApiResponse.success(recommendations);
     }
 
     /**

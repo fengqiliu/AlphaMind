@@ -1,9 +1,9 @@
 # AlphaMind - 智能股票分析系统
 
-> **版本**: v1.0.0
-> **日期**: 2026-04-27
+> **版本**: v2.0.0
+> **日期**: 2026-05-01
 > **作者**: AI Assistant
-> **状态**: 初稿
+> **状态**: 已完成（Phase 1–7 全部交付）
 >
 > **项目名称**: AlphaMind
 > **项目定位**: 基于Spring AI的多Agent智能股票分析系统，通过专业Agent协同与多模型辩论机制，实现更全面、更客观的投资决策支持
@@ -47,17 +47,19 @@
 
 ### 1.3 技术栈
 
-| 层级              | 技术选型                              |
-| ----------------- | ------------------------------------- |
-| **后端框架**      | Spring Boot 3.x + Spring AI           |
-| **数据库**        | MySQL 8.0 + Redis 7.x                 |
-| **向量存储**      | Milvus / Qdrant / MySQL Vector        |
-| **消息队列**      | Redis Pub/Sub (轻量级) / Kafka (可选) |
-| **前端框架**      | Vue 3 + Element Plus + ECharts        |
-| **数据源**        | Tushare Pro、AKShare                  |
-| **LLM Providers** | OpenAI GPT-4、DeepSeek、智谱GLM-4     |
-| **容器化**        | Docker + Docker Compose               |
-| **CI/CD**         | GitHub Actions                        |
+| 层级              | 技术选型（实际落地）                                          |
+| ----------------- | ------------------------------------------------------------- |
+| **后端框架**      | Spring Boot 3.4 + Spring AI 1.0.0                             |
+| **数据库**        | PostgreSQL 16 + Redis 7.x                                     |
+| **数据迁移**      | Flyway（自动版本化迁移）                                      |
+| **向量存储**      | Redis Vector Store（Spring AI 集成，Redis 内置）               |
+| **前端框架**      | Next.js 16 App Router + TypeScript + ECharts                  |
+| **状态管理**      | Zustand                                                       |
+| **HTTP 客户端**   | Axios（REST） + EventSource（SSE 流式）                       |
+| **数据源**        | 内置静态模拟数据（50+ 只股票），可通过 FETCH_REAL_DATA 切换    |
+| **LLM Providers** | OpenAI、DeepSeek、Anthropic（三选一或叠加，热切换+熔断）      |
+| **容器化**        | Docker + Docker Compose（含健康检查与有序启动）               |
+| **健康监控**      | Spring Boot Actuator（/actuator/health、metrics、info）        |
 
 ---
 
@@ -247,57 +249,44 @@
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 3.2 包结构设计
+### 3.2 包结构设计（实际实现）
 
 ```
-com.stock.analysis
-├── StockAnalysisApplication.java
+com.alphamind
+├── AlphaMindApplication.java
 │
 ├── config/                              # 配置层
-│   ├── SpringAIConfig.java             # ChatClient配置
-│   ├── LLMConfig.java                  # 多LLM配置
-│   ├── RedisConfig.java                # Redis配置
-│   ├── WebSocketConfig.java            # WebSocket配置
-│   ├── CorsConfig.java                 # 跨域配置
-│   └── SSEConfig.java                  # SSE配置
+│   ├── AlphaMindConfig.java            # 应用配置属性（含LLM/分析/辩论/SSE/记忆子配置）
+│   ├── SpringAIConfig.java             # Spring AI ChatClient 配置
+│   ├── RedisConfig.java                # Redis + RedisTemplate 配置
+│   ├── CorsConfig.java                 # 跨域配置（支持环境变量）
+│   └── StrategyTypeConverter.java      # 策略类型字符串转换器（大小写兼容）
 │
 ├── controller/                          # 控制器层
-│   ├── StockAnalysisController.java    # 股票分析API
-│   ├── ChatController.java             # 对话API
-│   ├── ReportController.java           # 报告API
-│   ├── WatchlistController.java        # 自选股API
-│   └── PromptController.java           # 提示词管理API
+│   ├── AnalysisController.java         # 分析API（SSE流式 + 同步 + 历史记录）
+│   ├── ChatController.java             # 对话API（会话创建、消息、流式）
+│   ├── StockController.java            # 股票搜索与自选股管理
+│   └── AdminController.java            # 工程能力管理（提示词版本、LLM健康）
 │
 ├── service/                             # 服务层
-│   ├── StockAnalysisService.java       # 股票分析主服务
-│   ├── ChatSessionService.java         # 对话会话服务
-│   ├── ReportGenerationService.java    # 报告生成服务
-│   ├── WatchlistService.java           # 自选股服务
-│   └── PromptManageService.java        # 提示词管理服务
-│
-├── orchestrator/                        # 编排层
-│   ├── AgentRouter.java                # 消息路由器
-│   ├── PipelineOrchestrator.java       # 流水线编排器
-│   └── DebateOrchestrator.java          # 辩论编排器
+│   ├── PipelineOrchestrator.java       # 流水线编排器（SSE驱动，Market→Tech→Sentiment→Portfolio）
+│   ├── DebateOrchestrator.java         # 辩论编排器（Bull→Bear→Neutral→Arbitrator顺序执行）
+│   ├── LlmManager.java                 # 多模型管理+轻量级熔断降级（CLOSED/OPEN/HALF_OPEN）
+│   ├── MemoryService.java              # 会话记忆（Redis优先+内存fallback）
+│   ├── PromptManager.java              # 提示词版本管理（纯内存，支持回滚）
+│   └── StockService.java               # 股票搜索（内置50+只A股数据）+自选股管理
 │
 ├── agent/                               # Agent层
-│   ├── base/
-│   │   ├── AbstractAgent.java          # Agent基类
-│   │   ├── AgentType.java              # Agent类型枚举
-│   │   ├── AgentContext.java           # Agent上下文
-│   │   └── AgentResponse.java          # Agent响应
-│   │
-│   ├── pipeline/                        # 流水线Agent
-│   │   ├── MarketAgent.java            # 行情采集Agent
-│   │   ├── TechnicalAgent.java         # 技术分析Agent
-│   │   ├── SentimentAgent.java          # 舆情分析Agent
-│   │   └── PortfolioAgent.java         # 综合决策Agent
-│   │
-│   └── debate/                          # 辩论Agent
-│       ├── BullAgent.java               # 多头Agent
-│       ├── BearAgent.java               # 空头Agent
-│       ├── NeutralAgent.java           # 中立Agent
-│       └── ArbitratorAgent.java        # 仲裁官Agent
+│   ├── BaseAgent.java                  # Agent基类（ThreadLocal上下文隔离，LLM可选，fallback模板）
+│   ├── AgentRouter.java                # 消息路由器（@AgentName语法解析）
+│   ├── MarketAgent.java                # 行情采集Agent
+│   ├── TechnicalAgent.java             # 技术分析Agent（MACD/RSI/KDJ/布林带/MA）
+│   ├── SentimentAgent.java             # 舆情分析Agent
+│   ├── PortfolioAgent.java             # 综合决策Agent（接入StrategyRegistry+StrategySignalPlanner）
+│   ├── BullAgent.java                  # 多头辩论Agent
+│   ├── BearAgent.java                  # 空头辩论Agent
+│   ├── NeutralAgent.java               # 中立辩论Agent
+│   └── ArbitratorAgent.java            # 仲裁官Agent
 │
 ├── memory/                              # 记忆系统
 │   ├── AgentMemory.java                # Agent记忆接口
@@ -322,61 +311,52 @@ com.stock.analysis
 │   ├── AkShareAdapter.java             # AKShare实现
 │   └── DataSourceFactory.java          # 工厂类
 │
-├── strategy/                            # 策略系统
-│   ├── Strategy.java                   # 策略接口
-│   ├── StrategyRegistry.java          # 策略注册表
-│   ├── ConservativeStrategy.java       # 保守策略
-│   ├── AggressiveStrategy.java         # 激进策略
-│   └── BalancedStrategy.java           # 平衡策略
+├── strategy/                            # 策略系统（实际实现）
+│   ├── StrategyProfile.java            # 策略配置接口
+│   ├── StrategyRegistry.java           # Spring Bean 注册表
+│   ├── StrategyModeResolver.java       # mode/enableDebate/strategy 优先级解析
+│   ├── StrategySignalPlanner.java      # 基于技术分+舆情分生成交易信号
+│   ├── ConservativeStrategyProfile.java # 保守策略（30%仓位，-5%止损，45天，阈值75%）
+│   ├── BalancedStrategyProfile.java    # 平衡策略（50%仓位，-7%止损，30天，阈值65%）
+│   └── AggressiveStrategyProfile.java  # 激进策略（80%仓位，-10%止损，15天，阈值55%）
 │
 ├── model/                               # 数据模型
-│   ├── entity/                          # JPA实体
-│   │   ├── Stock.java
-│   │   ├── Watchlist.java
-│   │   ├── ChatSession.java
-│   │   ├── ChatMessage.java
-│   │   ├── AnalysisReport.java
-│   │   ├── PromptVersion.java
-│   │   └── AnalysisHistory.java
+│   ├── entity/                          # JPA 实体（对应 PostgreSQL 表）
+│   │   ├── AnalysisReportEntity.java   # analysis_reports 表
+│   │   ├── WatchlistItemEntity.java    # watchlist_items 表
+│   │   ├── ChatSessionEntity.java      # chat_sessions 表
+│   │   └── ChatMessageEntity.java      # chat_messages 表
 │   │
-│   ├── dto/                            # DTO
-│   │   ├── StockQueryDTO.java
-│   │   ├── AnalysisResultDTO.java
-│   │   ├── TradeSignalDTO.java
-│   │   ├── ConfidenceIntervalDTO.java
-│   │   └── DebateResultDTO.java
+│   ├── dto/                            # 传输对象
+│   │   ├── AnalysisReportDTO.java      # 完整分析报告
+│   │   ├── AnalysisRequest.java        # 同步分析请求体
+│   │   ├── ApiResponse.java            # 统一响应包装（code/message/data）
+│   │   ├── ChatMessage.java            # 聊天消息
+│   │   ├── ConfidenceDTO.java          # 置信度（value+level+explanation）
+│   │   ├── DebateViewDTO.java          # 辩论观点（position/view/reasons/targetPrice）
+│   │   ├── JudgmentDTO.java            # 仲裁裁决（finalPosition/reasoning/riskWarnings）
+│   │   ├── MarketDataDTO.java          # 行情数据（价格/涨跌/PE/PB等）
+│   │   ├── SSEEvent.java               # SSE事件（stage/data/complete/error）
+│   │   ├── SentimentDataDTO.java       # 舆情数据（sentimentScore/news/aiSummary）
+│   │   ├── StockSearchResult.java      # 股票搜索结果
+│   │   ├── TechnicalIndicatorsDTO.java # 技术指标（MACD/RSI/KDJ/布林带/MA/评分）
+│   │   ├── TradeSignalDTO.java         # 交易信号（type/entryPrice/targetPrice/stopLoss）
+│   │   └── WatchlistItem.java          # 自选股条目
 │   │
-│   ├── enums/                          # 枚举
-│   │   ├── AgentType.java
-│   │   ├── SignalType.java
-│   │   ├── ConfidenceLevel.java
-│   │   ├── DebatePosition.java
-│   │   └── PromptStatus.java
-│   │
-│   └── vo/                             # Value Object
-│       ├── MarketData.java
-│       ├── TechnicalIndicators.java
-│       ├── SentimentData.java
-│       ├── Judgment.java
-│       └── PipelineResult.java
+│   └── enums/                          # 枚举
+│       ├── AgentType.java              # MARKET/TECHNICAL/SENTIMENT/PORTFOLIO/BULL/BEAR/NEUTRAL/ARBITRATOR
+│       ├── AnalysisMode.java           # PIPELINE/DEBATE
+│       ├── AnalysisStage.java          # MARKET/TECHNICAL/SENTIMENT/PORTFOLIO/DEBATE
+│       ├── ConfidenceLevel.java        # HIGH/MEDIUM/LOW
+│       ├── DebatePosition.java         # BULLISH/BEARISH/NEUTRAL
+│       ├── SignalType.java             # BUY/SELL/HOLD
+│       └── StrategyType.java           # CONSERVATIVE/BALANCED/AGGRESSIVE
 │
-├── repository/                          # 数据访问层
-│   ├── StockRepository.java
-│   ├── WatchlistRepository.java
-│   ├── ChatSessionRepository.java
-│   ├── AnalysisReportRepository.java
-│   └── PromptVersionRepository.java
-│
-├── exception/                           # 异常处理
-│   ├── AgentException.java
-│   ├── LLMException.java
-│   ├── DataSourceException.java
-│   └── GlobalExceptionHandler.java
-│
-└── util/                               # 工具类
-    ├── JsonUtil.java
-    ├── DateUtil.java
-    └── FormatUtil.java
+└── repository/                          # JPA 数据访问层
+    ├── AnalysisReportRepository.java   # 分析报告（按code查询、Top50）
+    ├── WatchlistItemRepository.java    # 自选股（按userId查询）
+    ├── ChatSessionRepository.java      # 聊天会话
+    └── ChatMessageRepository.java      # 聊天消息
 ```
 
 ---
@@ -413,59 +393,51 @@ public enum AgentType {
 }
 ```
 
-### 4.2 Agent基类设计
+### 4.2 BaseAgent 基类（实际实现）
+
+所有 Agent 继承 `BaseAgent`，核心特性：
+
+- **ThreadLocal 上下文隔离**：每个请求线程拥有独立 Context Map，并发安全，执行后调用 `clearContext()` 释放资源。
+- **LLM 可选**：`llmCall()` 失败时返回 `null`，子类降级为模板输出，不中断流水线。
+- **统一 Context Key**：`stockCode`、`stockName`、`strategy`、`marketData`、`technicalIndicators`、`sentimentData`、`tradeSignal`、`confidence`、`sessionId`、`contextSummary`。
 
 ```java
-/**
- * Agent基类 - 所有分析师的父类
- */
-public abstract class AbstractAgent {
+// com.alphamind.agent.BaseAgent（核心结构）
+@Component
+public abstract class BaseAgent {
 
-    protected final String agentId;
-    protected final AgentType agentType;
-    protected final String agentName;
-    protected SystemPrompt prompt;
+    @Autowired(required = false)
     protected ChatClient chatClient;
 
-    public AbstractAgent(AgentType agentType) {
-        this.agentId = UUID.randomUUID().toString();
-        this.agentType = agentType;
-        this.agentName = agentType.getName();
+    private final ThreadLocal<Map<String, Object>> contextHolder =
+            ThreadLocal.withInitial(ConcurrentHashMap::new);
+
+    protected void setContext(String key, Object value) {
+        contextHolder.get().put(key, value);
     }
 
-    /**
-     * 执行Agent分析
-     */
-    public abstract AgentResponse execute(AgentContext context);
-
-    /**
-     * 判断是否能够处理该消息
-     */
-    public boolean canHandle(String message) {
-        // 默认实现，可被子类重写
-        return true;
+    protected Object getContext(String key) {
+        return contextHolder.get().get(key);
     }
 
-    /**
-     * 获取该Agent的Prompt模板
-     */
-    protected String getPromptTemplate() {
-        return promptManager.getActivePrompt(agentType);
+    /** 每次任务结束必须调用，防止 ThreadLocal 内存泄漏 */
+    protected void clearContext() {
+        contextHolder.remove();
     }
 
-    /**
-     * 渲染Prompt模板
-     */
-    protected String renderPrompt(String template, Map<String, Object> params) {
-        // 使用Thymeleaf或StringTemplate渲染
-        return templateEngine.render(template, params);
-    }
+    public abstract String execute(String input);
 
-    /**
-     * 调用LLM
-     */
-    protected LLMResponse callLLM(String prompt, LLMConfig config) {
-        return llmManager.call(prompt, config);
+    protected String llmCall(String systemPrompt, String userMessage) {
+        if (chatClient == null) return null;
+        try {
+            return chatClient.prompt()
+                    .system(systemPrompt)
+                    .user(userMessage)
+                    .call()
+                    .content();
+        } catch (Exception e) {
+            return null;
+        }
     }
 }
 ```
@@ -1683,157 +1655,85 @@ public class StreamAnalysisController {
 }
 ```
 
-### 7.2 多LLM热切换与弹性降级
+### 7.2 多LLM热切换与弹性降级（实际实现）
+
+后端通过 `LlmManager` 实现自轻量级熔断机制，**未引入 Resilience4j**。
+
+#### 熔断状态机
+
+| 状态         | 含义                                            |
+| ------------ | ----------------------------------------------- |
+| `CLOSED`     | 正常调用                                        |
+| `OPEN`       | 达到失败阈值（连续3次），拒绝调用，等待30秒冷却 |
+| `HALF_OPEN`  | 冷却结束，放行单次试探请求                      |
 
 ```java
-/**
- * LLM管理器
- */
+// com.alphamind.service.LlmManager（核心结构）
 @Service
-@RequiredArgsConstructor
-public class LLMManager {
+public class LlmManager {
 
-    private final Map<String, ChatModel> models = new ConcurrentHashMap<>();
-    private final Map<String, ModelConfig> modelConfigs = new ConcurrentHashMap<>();
-    private final CircuitBreakerRegistry circuitBreakerRegistry;
-    private final RetryRegistry retryRegistry;
+    private static final int FAILURE_THRESHOLD = 3;       // 连续失败次数阈值
+    private static final long OPEN_DURATION_MS = 30_000L; // OPEN 状态持续时长
 
-    /**
-     * 注册模型
-     */
-    public void registerModel(String name, ChatModel model, ModelConfig config) {
-        models.put(name, model);
-        modelConfigs.put(name, config);
+    enum CircuitState { CLOSED, OPEN, HALF_OPEN }
 
-        // 注册熔断器
-        CircuitBreakerConfig cbConfig = CircuitBreakerConfig.custom()
-            .failureRateThreshold(50)
-            .waitDurationInOpenState(Duration.ofSeconds(30))
-            .slidingWindowSize(10)
-            .minimumNumberOfCalls(5)
-            .permittedNumberOfCallsInHalfOpenState(3)
-            .build();
-
-        circuitBreakerRegistry.circuitBreaker(name, cbConfig);
-
-        // 注册重试
-        RetryConfig retryConfig = RetryConfig.custom()
-            .maxAttempts(3)
-            .waitDuration(Duration.ofMillis(500))
-            .retryExceptions(Exception.class)
-            .build();
-
-        retryRegistry.retryRegistry(name, retryConfig);
-
-        log.info("模型已注册: name={}, config={}", name, config);
+    private static class ModelState {
+        volatile CircuitState state = CircuitState.CLOSED;
+        volatile int failureCount = 0;
+        volatile long openedAt = 0L;
     }
 
-    /**
-     * 智能选择最佳可用模型
-     */
-    public ChatModel getAvailableModel(String preferred) {
-        // 1. 检查首选模型
-        ChatModel model = models.get(preferred);
-        if (model == null) {
-            throw new ModelNotFoundException(preferred);
-        }
-
-        CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker(preferred);
-
-        try {
-            // 检查熔断器状态和模型健康状态
-            return cb.executeSupplier(() -> {
-                if (!model.isHealthy()) {
-                    throw new ModelUnavailableException(preferred);
-                }
-                return model;
-            });
-        } catch (Exception e) {
-            log.warn("模型 {} 不可用: {}, 开始降级", preferred, e.getMessage());
-            return fallbackToAvailable(preferred);
-        }
-    }
+    // 每个 ChatClient 独立维护一套熔断状态
+    private final Map<String, ModelState> states = new ConcurrentHashMap<>();
 
     /**
-     * 降级到可用模型
+     * 通过可用的 ChatClient 调用 LLM，失败自动熔断并降级
      */
-    private ChatModel fallbackToAvailable(String failedModel) {
-        // 按优先级尝试备选模型
-        List<String> priority = Arrays.asList(
-            "deepseek", "zhipu", "openai", "local"
-        );
+    public Optional<String> call(String modelKey, ChatClient client,
+                                  String systemPrompt, String userMessage) {
+        ModelState ms = states.computeIfAbsent(modelKey, k -> new ModelState());
 
-        // 移除失败的模型
-        priority = priority.stream()
-            .filter(m -> !m.equals(failedModel))
-            .collect(toList());
-
-        for (String candidate : priority) {
-            ChatModel model = models.get(candidate);
-            if (model != null && model.isHealthy()) {
-                CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker(candidate);
-                try {
-                    return cb.executeSupplier(() -> model);
-                } catch (Exception e) {
-                    log.warn("备选模型 {} 也不可用", candidate);
-                }
+        // 检查是否允许调用
+        if (ms.state == CircuitState.OPEN) {
+            if (System.currentTimeMillis() - ms.openedAt > OPEN_DURATION_MS) {
+                ms.state = CircuitState.HALF_OPEN;
+            } else {
+                return Optional.empty(); // 熔断中，直接返回空
             }
         }
 
-        throw new AllModelsUnavailableException(
-            "所有模型都不可用，请稍后重试");
+        try {
+            String result = client.prompt()
+                    .system(systemPrompt)
+                    .user(userMessage)
+                    .call()
+                    .content();
+            onSuccess(ms);
+            return Optional.ofNullable(result);
+        } catch (Exception e) {
+            onFailure(ms);
+            return Optional.empty();
+        }
     }
 
-    /**
-     * 调用LLM (带重试和熔断)
-     */
-    public LLMResponse call(String prompt, LLMConfig config) {
-        ChatModel model = getAvailableModel(config.getModel());
-
-        Retry retry = retryRegistry.retry(config.getModel());
-        CircuitBreaker cb = circuitBreakerRegistry.circuitBreaker(config.getModel());
-
-        Supplier<LLMResponse> supplier = () -> {
-            long start = System.currentTimeMillis();
-
-            ChatResponse response = model.call(new Prompt(prompt,
-                ChatOptions.builder()
-                    .temperature(config.getTemperature())
-                    .maxTokens(config.getMaxTokens())
-                    .build()));
-
-            long latency = System.currentTimeMillis() - start;
-
-            return LLMResponse.builder()
-                .content(response.getResult().getOutput().getContent())
-                .model(config.getModel())
-                .tokensUsed(estimateTokens(prompt, response))
-                .latency(latency)
-                .timestamp(LocalDateTime.now())
-                .build();
-        };
-
-        // 组合重试和熔断
-        return cb.execute(retry.execute(supplier));
+    private void onSuccess(ModelState ms) {
+        ms.failureCount = 0;
+        ms.state = CircuitState.CLOSED;
     }
-}
 
-/**
- * 模型配置
- */
-@Data
-@Builder
-public class ModelConfig {
-    private String name;
-    private String endpoint;           // API端点
-    private String apiKey;             // API密钥
-    private double temperature;         // 默认温度
-    private int maxTokens;             // 最大Token数
-    private int priority;              // 优先级(越小越高)
-    private boolean enabled;           // 是否启用
-    private Map<String, String> extraParams; // 额外参数
+    private void onFailure(ModelState ms) {
+        ms.failureCount++;
+        if (ms.failureCount >= FAILURE_THRESHOLD) {
+            ms.state = CircuitState.OPEN;
+            ms.openedAt = System.currentTimeMillis();
+        }
+    }
 }
 ```
+
+**Spring AI 集成方式**：`SpringAIConfig` 根据环境变量分别构建 `ChatClient` Bean（OpenAI / DeepSeek / Anthropic），并注入 `LlmManager` 的 model registry。`BaseAgent.llmCall()` 委托 `LlmManager.call()` 并在返回 `Optional.empty()` 时降级到模板输出。
+
+
 
 ### 7.3 提示词版本管理
 
@@ -1991,173 +1891,122 @@ public class PromptManager {
 }
 ```
 
-### 7.4 策略系统
+### 7.4 策略系统（实际实现）
+
+策略系统位于 `com.alphamind.strategy` 包，由 `StrategyProfile` 接口、3 个具体策略、`StrategyRegistry`、`StrategySignalPlanner` 和 `StrategyModeResolver` 五部分组成。
 
 ```java
-/**
- * 策略接口
- */
-public interface Strategy {
-
-    /**
-     * 策略名称
-     */
-    String getName();
-
-    /**
-     * 获取置信度阈值
-     */
-    double getConfidenceThreshold();
-
-    /**
-     * 是否启用辩论模式
-     */
-    boolean isDebateEnabled();
-
-    /**
-     * 获取分析深度
-     */
-    AnalysisDepth getDepth();
-
-    /**
-     * 生成交易信号
-     */
-    TradeSignal generateSignal(PipelineResult pipeline, Judgment judgment);
-}
-
-/**
- * 保守策略
- */
-@Service("conservativeStrategy")
-public class ConservativeStrategy implements Strategy {
-
-    @Override
-    public String getName() {
-        return "保守策略";
-    }
-
-    @Override
-    public double getConfidenceThreshold() {
-        return 0.8; // 高置信度要求
-    }
-
-    @Override
-    public boolean isDebateEnabled() {
-        return true; // 必须辩论
-    }
-
-    @Override
-    public AnalysisDepth getDepth() {
-        return AnalysisDepth.FULL; // 全量分析
-    }
-
-    @Override
-    public TradeSignal generateSignal(PipelineResult pipeline, Judgment judgment) {
-        // 保守策略: 高置信度 + 多方一致才买入
-        if (judgment.getConfidence().getValue() < 0.8) {
-            return TradeSignal.builder()
-                .type(SignalType.HOLD)
-                .reason("置信度不足")
-                .build();
-        }
-
-        if (!isConsensus(judgment)) {
-            return TradeSignal.builder()
-                .type(SignalType.HOLD)
-                .reason("缺乏共识")
-                .build();
-        }
-
-        // 执行买入信号
-        return buildBuySignal(pipeline);
-    }
-}
-
-/**
- * 激进策略
- */
-@Service("aggressiveStrategy")
-public class AggressiveStrategy implements Strategy {
-
-    @Override
-    public String getName() {
-        return "激进策略";
-    }
-
-    @Override
-    public double getConfidenceThreshold() {
-        return 0.5; // 低置信度要求
-    }
-
-    @Override
-    public boolean isDebateEnabled() {
-        return false; // 跳过辩论加速响应
-    }
-
-    @Override
-    public AnalysisDepth getDepth() {
-        return AnalysisDepth.QUICK; // 快速分析
-    }
-}
-
-/**
- * 策略注册表
- */
-@Service
-public class StrategyRegistry {
-
-    private final Map<String, Strategy> strategies = new HashMap<>();
-
-    public StrategyRegistry(
-            @Qualifier("conservativeStrategy") Strategy conservative,
-            @Qualifier("aggressiveStrategy") Strategy aggressive,
-            @Qualifier("balancedStrategy") Strategy balanced) {
-
-        strategies.put("conservative", conservative);
-        strategies.put("aggressive", aggressive);
-        strategies.put("balanced", balanced);
-    }
-
-    public Strategy getStrategy(String name) {
-        Strategy strategy = strategies.get(name.toLowerCase());
-        if (strategy == null) {
-            return strategies.get("balanced"); // 默认平衡策略
-        }
-        return strategy;
-    }
+// 策略配置接口
+public interface StrategyProfile {
+    double getPositionRatio();          // 建仓比例
+    double getStopLossRatio();          // 止损比例
+    int    getHoldingPeriodDays();      // 持仓天数
+    double getConfidenceThreshold();    // 置信度阈值（买入门槛）
+    AnalysisMode getDefaultMode();      // 默认分析模式
+    double getBuyTargetBaseRatio();     // 目标价计算基础比例
 }
 ```
+
+**三种策略参数对比**：
+
+| 策略       | 仓位  | 止损   | 持仓期 | 置信度阈值 | 默认模式  |
+| ---------- | ----- | ------ | ------ | ---------- | --------- |
+| 保守       | 30%   | -5%    | 45天   | 75%        | DEBATE    |
+| 平衡       | 50%   | -7%    | 30天   | 65%        | DEBATE    |
+| 激进       | 80%   | -10%   | 15天   | 55%        | PIPELINE  |
+
+**StrategySignalPlanner（信号生成逻辑）**：
+
+```java
+// 综合评分 = 技术分 × 0.5 + 舆情分×100 × 0.5
+double compositeScore = technicalScore * 0.5 + sentimentScore * 100 * 0.5;
+
+SignalType signal;
+if (compositeScore >= 70)      signal = SignalType.BUY;
+else if (compositeScore >= 50) signal = SignalType.HOLD;
+else                           signal = SignalType.SELL;
+
+// 再叠加置信度阈值检查：未达阈值强制 HOLD
+if (confidence < profile.getConfidenceThreshold() / 100.0)
+    signal = SignalType.HOLD;
+```
+
+**StrategyModeResolver（模式解析优先级）**：
+
+```
+显式 mode 参数 > enableDebate=true > strategy.getDefaultMode()
+```
+
+**StrategyRegistry**：Spring `@Service`，注入三个 Profile Bean，通过 `StrategyType` 枚举查询对应配置。
+
+`PortfolioAgent` 在生成投资建议时从 `StrategyRegistry` 获取当前策略参数，并将 `positionRatio`、`stopLossRatio`、`holdingPeriodDays` 注入 LLM Prompt，保持策略参数与 AI 输出的一致性。
 
 ---
 
 ## 8. 前端设计
 
-### 8.1 前端技术栈
+### 8.1 前端技术栈（实际实现）
 
-| 类别            | 技术选型                             |
-| --------------- | ------------------------------------ |
-| **框架**        | Vue 3 + Composition API + TypeScript |
-| **状态管理**    | Pinia                                |
-| **UI组件库**    | Element Plus                         |
-| **图表**        | ECharts (K线图)                      |
-| **HTTP客户端**  | Axios                                |
-| **构建工具**    | Vite                                 |
-| **CSS预处理器** | SCSS                                 |
+| 类别              | 技术选型                                |
+| ----------------- | --------------------------------------- |
+| **框架**          | Next.js 16 (App Router) + TypeScript    |
+| **状态管理**      | Zustand                                 |
+| **图表**          | ECharts（K线图 + 技术指标）             |
+| **HTTP 客户端**   | Axios（REST）+ EventSource（SSE 流式）  |
+| **CSS**           | Tailwind CSS                            |
+| **构建工具**      | Next.js 内置（Turbopack/Webpack）       |
+| **代码风格**      | ESLint (Next.js 官方配置)               |
 
-### 8.2 前端页面结构
+### 8.2 前端页面结构（实际实现）
 
 ```
-src/
-├── views/
-│   ├── Dashboard.vue              # 仪表盘
-│   ├── StockAnalysis.vue          # 股票分析主页面
-│   ├── AgentChat.vue              # Agent对话页面
-│   ├── Watchlist.vue              # 自选股管理
-│   ├── History.vue                # 分析历史
-│   └── ReportDetail.vue           # 报告详情
+frontend/src/
+├── app/                              # Next.js App Router 路由层
+│   ├── layout.tsx                   # 全局布局（含 AppShell/Sidebar）
+│   ├── page.tsx                     # / 股票分析主页
+│   ├── chat/page.tsx                # /chat Agent 对话页
+│   ├── history/page.tsx             # /history 分析历史页
+│   └── watchlist/page.tsx           # /watchlist 自选股管理页
 │
 ├── components/
+│   ├── agent/
+│   │   ├── AgentMessage.tsx         # Agent 消息气泡（含 AgentType 图标/名称）
+│   │   └── AgentSelector.tsx        # Agent 类型选择器
+│   ├── analysis/
+│   │   ├── AnalysisResult.tsx       # 流水线分析结果展示
+│   │   └── DebateResult.tsx         # 辩论模式结果与裁决展示
 │   ├── chart/
+│   │   ├── KLineChart.tsx           # ECharts K线图（含MA5/10/20/60）
+│   │   └── TechnicalIndicators.tsx  # MACD/RSI/KDJ 指标图
+│   ├── common/
+│   │   ├── Button.tsx               # 通用按钮
+│   │   ├── ConfidenceBar.tsx        # 置信度进度条（HIGH/MEDIUM/LOW 色彩）
+│   │   └── StockSearch.tsx          # 股票搜索框（调用 /api/v1/stocks/search）
+│   └── layout/
+│       ├── AppShell.tsx             # 整体布局外壳
+│       └── Sidebar.tsx              # 侧边导航栏
+│
+├── stores/                          # Zustand 状态
+│   ├── analysis.ts                  # 分析状态（SSE进度、报告数据、历史列表）
+│   ├── chat.ts                      # 对话状态（会话、消息列表、loading）
+│   └── watchlist.ts                 # 自选股状态
+│
+├── api/
+│   └── client.ts                    # Axios 实例（baseURL=/api/v1）
+│
+├── hooks/
+│   └── useSSE.ts                    # EventSource 封装（处理 stage/data/result/error 事件）
+│
+├── utils/
+│   ├── index.ts                     # 通用工具函数
+│   └── reportExport.ts              # 分析报告导出（JSON + Markdown 格式）
+│
+├── types/
+│   └── index.ts                     # 全局 TypeScript 类型定义
+│
+└── config/
+    └── navigation.ts                # 导航菜单配置
+```
 │   │   ├── KLineChart.vue         # K线图组件
 │   │   ├── MACDChart.vue           # MACD指标
 │   │   └── IndicatorChart.vue      # 技术指标
@@ -2201,315 +2050,226 @@ src/
 
 ### 8.3 核心组件设计
 
-#### 8.3.1 Agent对话面板
+#### 8.3.1 Agent 对话面板
 
-```vue
-<!-- AgentChat.vue -->
-<template>
-  <div class="agent-chat">
-    <!-- Agent选择器 -->
-    <div class="agent-selector">
-      <el-select v-model="selectedAgent" placeholder="选择Agent">
-        <el-option-group label="流水线">
-          <el-option value="MARKET" label="行情Agent" />
-          <el-option value="TECHNICAL" label="技术Agent" />
-          <el-option value="SENTIMENT" label="舆情Agent" />
-          <el-option value="PORTFOLIO" label="投资经理" />
-        </el-option-group>
-        <el-option-group label="辩论">
-          <el-option value="BULL" label="多头" />
-          <el-option value="BEAR" label="空头" />
-          <el-option value="NEUTRAL" label="中立" />
-          <el-option value="ARBITRATOR" label="仲裁官" />
-        </el-option-group>
-      </el-select>
-    </div>
+实际实现在 `frontend/src/app/chat/page.tsx`，使用 Zustand `useChatStore` + `useSSE` hook 驱动。
 
-    <!-- 消息列表 -->
-    <div class="message-list" ref="messageListRef">
-      <div v-for="msg in messages" :key="msg.id" :class="['message', msg.role]">
-        <div class="message-avatar">
-          <el-avatar :icon="getAgentIcon(msg.agentType)" />
-        </div>
-        <div class="message-content">
-          <div class="message-header">
-            <span class="agent-name">{{ msg.agentName }}</span>
-            <span class="timestamp">{{ formatTime(msg.timestamp) }}</span>
-          </div>
-          <div class="message-body" v-html="renderMarkdown(msg.content)" />
-          <div class="message-meta" v-if="msg.modelUsed">
-            <el-tag size="small">{{ msg.modelUsed }}</el-tag>
-          </div>
-        </div>
+```tsx
+// 核心结构（简化）
+const ChatPage = () => {
+  const { messages, sendMessage, loading } = useChatStore();
+  const [agentType, setAgentType] = useState("PORTFOLIO");
+
+  return (
+    <div className="flex flex-col h-full">
+      <AgentSelector value={agentType} onChange={setAgentType} />
+      <div className="flex-1 overflow-y-auto">
+        {messages.map((msg) => (
+          <AgentMessage key={msg.id} message={msg} />
+        ))}
       </div>
-
-      <!-- 加载状态 -->
-      <div v-if="loading" class="loading-indicator">
-        <el-icon class="is-loading"><Loading /></el-icon>
-        <span>{{ loadingStage }}</span>
-      </div>
+      <ChatInput onSend={(text) => sendMessage(text, agentType)} loading={loading} />
     </div>
-
-    <!-- 输入框 -->
-    <div class="input-area">
-      <el-input
-        v-model="inputMessage"
-        type="textarea"
-        :rows="3"
-        placeholder="输入消息... (使用 @AgentName 指定特定Agent)"
-        @keydown.enter.ctrl="sendMessage"
-      />
-      <el-button type="primary" @click="sendMessage" :loading="loading">
-        发送
-      </el-button>
-    </div>
-  </div>
-</template>
-
-<script setup lang="ts">
-import { ref, nextTick } from "vue";
-import { useChatStore } from "@/stores/chat";
-import { useSSE } from "@/composables/useSSE";
-
-const chatStore = useChatStore();
-const { messages, loading, loadingStage, send } = useSSE();
-
-const inputMessage = ref("");
-const selectedAgent = ref("PORTFOLIO");
-const messageListRef = ref<HTMLElement>();
-
-const sendMessage = async () => {
-  if (!inputMessage.value.trim()) return;
-
-  // 添加用户消息
-  chatStore.addMessage({
-    role: "user",
-    content: inputMessage.value,
-    agentType: selectedAgent.value,
-  });
-
-  // SSE请求
-  await send({
-    stockCode: chatStore.currentStockCode,
-    message: inputMessage.value,
-    agentType: selectedAgent.value,
-  });
-
-  inputMessage.value = "";
-  scrollToBottom();
+  );
 };
-
-const scrollToBottom = () => {
-  nextTick(() => {
-    if (messageListRef.value) {
-      messageListRef.value.scrollTop = messageListRef.value.scrollHeight;
-    }
-  });
-};
-</script>
 ```
 
 #### 8.3.2 K线图组件
 
-```vue
-<!-- KLineChart.vue -->
-<template>
-  <div class="kline-chart" ref="chartRef" />
-</template>
-
-<script setup lang="ts">
+```tsx
+// frontend/src/components/chart/KLineChart.tsx
+// ECharts candlestick + MA 多线叠加，MACD 子图在独立 grid
 import * as echarts from "echarts";
-import { onMounted, watch, ref } from "vue";
+import { useEffect, useRef } from "react";
 
-const props = defineProps<{
-  data: KLineData;
-  indicators?: string[];
-}>();
-
-const chartRef = ref<HTMLElement>();
-let chart: echarts.ECharts;
-
-onMounted(() => {
-  chart = echarts.init(chartRef.value!);
-  chart.setOption(buildOption());
-});
-
-watch(
-  () => props.data,
-  () => {
-    chart.setOption(buildOption());
-  },
-  { deep: true },
-);
-
-const buildOption = (): echarts.EChartsOption => ({
-  tooltip: {
-    trigger: "axis",
-    axisPointer: { type: "cross" },
-  },
-  legend: {
-    data: ["K线", "MA5", "MA10", "MA20", "MA60"],
-  },
-  grid: [
-    { left: "10%", right: "8%", height: "60%" },
-    { left: "10%", right: "8%", top: "73%", height: "15%" },
-  ],
-  xAxis: [
-    { type: "category", data: props.data.dates, gridIndex: 0 },
-    { type: "category", data: props.data.dates, gridIndex: 1 },
-  ],
-  yAxis: [
-    { scale: true, gridIndex: 0 },
-    { scale: true, gridIndex: 1 },
-  ],
-  series: [
-    {
-      name: "K线",
-      type: "candlestick",
-      data: props.data.klines,
-      xAxisIndex: 0,
-      yAxisIndex: 0,
-    },
-    {
-      name: "MA5",
-      type: "line",
-      data: props.data.ma5,
-      smooth: true,
-      xAxisIndex: 0,
-      yAxisIndex: 0,
-    },
-    // ... 其他MA线
-    {
-      name: "MACD",
-      type: "bar",
-      data: props.data.macd,
-      xAxisIndex: 1,
-      yAxisIndex: 1,
-    },
-  ],
-});
-</script>
-```
-
-#### 8.3.3 SSE流式请求Composable
-
-```typescript
-// useSSE.ts
-import { ref, Ref } from "vue";
-import { chatAPI } from "@/api/chat";
-
-export interface UseSSEReturn {
-  messages: Ref<ChatMessage[]>;
-  loading: Ref<boolean>;
-  loadingStage: Ref<string>;
-  send: (params: SendParams) => Promise<void>;
-  abort: () => void;
-}
-
-export function useSSE(): UseSSEReturn {
-  const messages = ref<ChatMessage[]>([]);
-  const loading = ref(false);
-  const loadingStage = ref("");
-
-  let eventSource: EventSource | null = null;
-  let abortController: AbortController | null = null;
-
-  const send = async (params: SendParams) => {
-    // 清理之前的连接
-    abort();
-
-    loading.value = true;
-    loadingStage.value = "连接中...";
-
-    try {
-      const response = await fetch(chatAPI.streamUrl(params), {
-        method: "GET",
-        headers: { Accept: "text/event-stream" },
-      });
-
-      const reader = response.body!.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value);
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            const event = JSON.parse(line.slice(6));
-            handleSSEEvent(event);
-          }
-        }
-      }
-    } catch (e) {
-      console.error("SSE Error:", e);
-    } finally {
-      loading.value = false;
-      loadingStage.value = "";
-    }
-  };
-
-  const handleSSEEvent = (event: SSEEvent) => {
-    switch (event.event) {
-      case "stage":
-        loadingStage.value = event.message;
-        break;
-
-      case "data":
-        // 根据stage更新消息
-        const existingMsg = messages.value.find(
-          (m) => m.agentType === event.stage,
-        );
-
-        if (existingMsg) {
-          existingMsg.content = JSON.stringify(event.data);
-        } else {
-          messages.value.push({
-            id: crypto.randomUUID(),
-            role: "assistant",
-            agentType: event.stage,
-            agentName: getAgentName(event.stage),
-            content: JSON.stringify(event.data),
-            timestamp: new Date(),
-          });
-        }
-        break;
-
-      case "complete":
-        loading.value = false;
-        break;
-    }
-  };
-
-  const abort = () => {
-    if (eventSource) {
-      eventSource.close();
-      eventSource = null;
-    }
-    if (abortController) {
-      abortController.abort();
-      abortController = null;
-    }
-  };
-
-  return {
-    messages,
-    loading,
-    loadingStage,
-    send,
-    abort,
-  };
+export function KLineChart({ data }: { data: MarketDataDTO }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const chart = echarts.init(ref.current!);
+    chart.setOption(buildOption(data));
+    return () => chart.dispose();
+  }, [data]);
+  return <div ref={ref} style={{ width: "100%", height: 480 }} />;
 }
 ```
+
+#### 8.3.3 SSE 流式请求 Hook
+
+```tsx
+// frontend/src/hooks/useSSE.ts
+export function useSSE(url: string) {
+  const [stages, setStages] = useState<Record<string, unknown>>({});
+  const [finalReport, setFinalReport] = useState<AnalysisReportDTO | null>(null);
+  const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
+
+  const start = useCallback(() => {
+    setStatus("loading");
+    const es = new EventSource(url);
+
+    es.addEventListener("stage", (e) => {
+      const data = JSON.parse(e.data);
+      setStages((prev) => ({ ...prev, [data.stage]: data }));
+    });
+
+    es.addEventListener("result", (e) => {
+      const resp = JSON.parse(e.data);
+      setFinalReport(resp.data);
+      setStatus("done");
+      es.close();
+    });
+
+    es.onerror = () => { setStatus("error"); es.close(); };
+  }, [url]);
+
+  return { stages, finalReport, status, start };
+}
+```
+
+
 
 ---
 
 ## 9. 数据库设计
 
-### 9.1 ER图
+> 实际使用 **PostgreSQL 16**，通过 **Flyway** 管理版本化迁移脚本（`backend/src/main/resources/db/migration/V1__init_schema.sql`）。
+
+### 9.1 ER图（实际表结构）
+
+```
+analysis_reports          watchlist_items          chat_sessions
+─────────────────         ───────────────          ─────────────
+id (VARCHAR PK)           id (BIGSERIAL PK)        session_id (VARCHAR PK)
+stock_code                user_id                  user_id
+stock_name                stock_code               stock_code
+strategy                  stock_name               stock_name
+enable_debate             notes                    strategy
+signal_type               created_at               message_count
+entry_price               updated_at               last_active_at
+target_price                                       created_at
+stop_loss
+holding_days              chat_messages            stock_info
+rationale                 ─────────────            ──────────
+confidence_value          id (VARCHAR PK)          stock_code (PK)
+confidence_level          session_id (FK)          stock_name
+market_data (JSONB)       role                     market
+technical_indicators (J)  content                  industry
+sentiment_data (JSONB)    agent_type               current_price
+judgment (JSONB)          agent_name               change_percent
+created_at                model_used               pe_ratio
+updated_at                token_count              last_updated
+                          created_at
+```
+
+### 9.2 表结构（PostgreSQL DDL）
+
+```sql
+-- ==========================================
+-- 1. 分析报告表
+-- ==========================================
+CREATE TABLE IF NOT EXISTS analysis_reports (
+    id              VARCHAR(36)  PRIMARY KEY,
+    stock_code      VARCHAR(20)  NOT NULL,
+    stock_name      VARCHAR(100) NOT NULL,
+    strategy        VARCHAR(20)  NOT NULL DEFAULT 'BALANCED',
+    enable_debate   BOOLEAN      NOT NULL DEFAULT TRUE,
+    signal_type     VARCHAR(10),                    -- BUY / SELL / HOLD
+    entry_price     NUMERIC(12, 4),
+    target_price    NUMERIC(12, 4),
+    stop_loss       NUMERIC(12, 4),
+    holding_days    INTEGER,
+    rationale       TEXT,
+    confidence_value   NUMERIC(5, 4),
+    confidence_level   VARCHAR(10),                 -- HIGH / MEDIUM / LOW
+    market_data          JSONB,
+    technical_indicators JSONB,
+    sentiment_data       JSONB,
+    judgment             JSONB,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_analysis_stock_code ON analysis_reports (stock_code);
+CREATE INDEX idx_analysis_created_at ON analysis_reports (created_at DESC);
+CREATE INDEX idx_analysis_signal_type ON analysis_reports (signal_type);
+CREATE INDEX idx_analysis_market_data ON analysis_reports USING GIN (market_data);
+
+-- ==========================================
+-- 2. 自选股表
+-- ==========================================
+CREATE TABLE IF NOT EXISTS watchlist_items (
+    id          BIGSERIAL    PRIMARY KEY,
+    user_id     VARCHAR(100) NOT NULL DEFAULT 'default',
+    stock_code  VARCHAR(20)  NOT NULL,
+    stock_name  VARCHAR(100) NOT NULL,
+    notes       TEXT,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, stock_code)
+);
+
+-- ==========================================
+-- 3. 聊天会话表
+-- ==========================================
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    session_id      VARCHAR(36)  PRIMARY KEY,
+    user_id         VARCHAR(100) NOT NULL DEFAULT 'default',
+    stock_code      VARCHAR(20),
+    stock_name      VARCHAR(100),
+    strategy        VARCHAR(20),
+    message_count   INTEGER      NOT NULL DEFAULT 0,
+    last_active_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+-- ==========================================
+-- 4. 聊天消息表
+-- ==========================================
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id          VARCHAR(36)  PRIMARY KEY,
+    session_id  VARCHAR(36)  NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+    role        VARCHAR(20)  NOT NULL,   -- user / assistant / system
+    content     TEXT         NOT NULL,
+    agent_type  VARCHAR(20),
+    agent_name  VARCHAR(50),
+    model_used  VARCHAR(50),
+    token_count INTEGER,
+    created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+-- ==========================================
+-- 5. 股票基础信息缓存表
+-- ==========================================
+CREATE TABLE IF NOT EXISTS stock_info (
+    stock_code      VARCHAR(20)  PRIMARY KEY,
+    stock_name      VARCHAR(100) NOT NULL,
+    market          VARCHAR(20),
+    industry        VARCHAR(50),
+    current_price   NUMERIC(12, 4),
+    change_percent  NUMERIC(8, 4),
+    market_cap      BIGINT,
+    pe_ratio        NUMERIC(10, 4),
+    last_updated    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+-- ==========================================
+-- 触发器：自动更新 updated_at
+-- ==========================================
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_analysis_reports_updated
+    BEFORE UPDATE ON analysis_reports
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER trg_watchlist_items_updated
+    BEFORE UPDATE ON watchlist_items
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+```
+
+
 
 ```
 ┌─────────────────┐       ┌─────────────────┐       ┌─────────────────┐
@@ -2557,198 +2317,71 @@ export function useSSE(): UseSSEReturn {
 │ change_log      │
 │ created_by      │
 │ created_at      │
-└─────────────────┘
-```
-
-### 9.2 表结构
-
-```sql
--- 用户表
-CREATE TABLE `user` (
-    `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
-    `username` VARCHAR(50) NOT NULL UNIQUE,
-    `email` VARCHAR(100) NOT NULL UNIQUE,
-    `password_hash` VARCHAR(255) NOT NULL,
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_username (username),
-    INDEX idx_email (email)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 股票基本信息表
-CREATE TABLE `stock` (
-    `code` VARCHAR(20) PRIMARY KEY,
-    `name` VARCHAR(100) NOT NULL,
-    `market` VARCHAR(20) NOT NULL COMMENT 'SH/SZ/BJ',
-    `industry` VARCHAR(50),
-    `listing_date` DATE,
-    `total_shares` BIGINT,
-    `circulating_shares` BIGINT,
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    INDEX idx_name (name),
-    INDEX idx_industry (industry),
-    INDEX idx_market (market)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 自选股表
-CREATE TABLE `watchlist` (
-    `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
-    `user_id` BIGINT NOT NULL,
-    `stock_code` VARCHAR(20) NOT NULL,
-    `added_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `note` VARCHAR(255),
-    FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,
-    FOREIGN KEY (`stock_code`) REFERENCES `stock`(`code`),
-    UNIQUE KEY `uk_user_stock` (`user_id`, `stock_code`),
-    INDEX idx_user (user_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 对话会话表
-CREATE TABLE `chat_session` (
-    `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
-    `user_id` BIGINT NOT NULL,
-    `stock_code` VARCHAR(20),
-    `strategy` VARCHAR(50) DEFAULT 'balanced',
-    `status` VARCHAR(20) DEFAULT 'ACTIVE',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON DELETE CASCADE,
-    INDEX idx_user (user_id),
-    INDEX idx_stock (stock_code),
-    INDEX idx_updated (updated_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 聊天消息表
-CREATE TABLE `chat_message` (
-    `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
-    `session_id` BIGINT NOT NULL,
-    `role` VARCHAR(20) NOT NULL COMMENT 'user/assistant/system',
-    `content` TEXT,
-    `agent_type` VARCHAR(50),
-    `model_used` VARCHAR(50),
-    `tokens_used` INT,
-    `latency_ms` INT,
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (`session_id`) REFERENCES `chat_session`(`id`) ON DELETE CASCADE,
-    INDEX idx_session (session_id),
-    INDEX idx_created (created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 分析报告表
-CREATE TABLE `analysis_report` (
-    `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
-    `session_id` BIGINT NOT NULL,
-    `stock_code` VARCHAR(20) NOT NULL,
-    `stock_name` VARCHAR(100),
-    `final_signal` VARCHAR(20) COMMENT 'BUY/SELL/HOLD',
-    `confidence_value` DECIMAL(5,4),
-    `confidence_level` VARCHAR(20),
-    `target_price` DECIMAL(10,2),
-    `stop_loss` DECIMAL(10,2),
-    `entry_price` DECIMAL(10,2),
-
-    `market_analysis` JSON COMMENT '行情分析结果',
-    `technical_analysis` JSON COMMENT '技术分析结果',
-    `sentiment_analysis` JSON COMMENT '舆情分析结果',
-    `debate_judgment` JSON COMMENT '辩论裁决结果',
-
-    `report_content` LONGTEXT COMMENT 'Markdown格式报告',
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-
-    FOREIGN KEY (`session_id`) REFERENCES `chat_session`(`id`) ON DELETE CASCADE,
-    INDEX idx_stock (stock_code),
-    INDEX idx_signal (final_signal),
-    INDEX idx_confidence (confidence_value),
-    INDEX idx_created (created_at)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 分析历史表
-CREATE TABLE `analysis_history` (
-    `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
-    `stock_code` VARCHAR(20) NOT NULL,
-    `stock_name` VARCHAR(100),
-    `agent_type` VARCHAR(50) NOT NULL,
-    `signal_type` VARCHAR(20),
-    `confidence` DECIMAL(5,4),
-    `confidence_level` VARCHAR(20),
-    `summary` VARCHAR(500),
-    `full_content` LONGTEXT,
-    `model_used` VARCHAR(50),
-    `embedding` VECTOR(1536) COMMENT '向量存储(可选)',
-    `timestamp` DATETIME NOT NULL,
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-
-    INDEX idx_stock (stock_code),
-    INDEX idx_agent (agent_type),
-    INDEX idx_signal (signal_type),
-    INDEX idx_timestamp (timestamp),
-    INDEX idx_stock_timestamp (stock_code, timestamp)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
--- 提示词版本表
-CREATE TABLE `prompt_version` (
-    `id` BIGINT PRIMARY KEY AUTO_INCREMENT,
-    `agent_type` VARCHAR(50) NOT NULL,
-    `version` INT NOT NULL,
-    `content` LONGTEXT NOT NULL,
-    `variables` JSON COMMENT '变量定义',
-    `status` VARCHAR(20) DEFAULT 'DRAFT' COMMENT 'DRAFT/ACTIVE/DEPRECATED',
-    `traffic_allocation` DECIMAL(5,4) DEFAULT 1.0,
-    `change_log` VARCHAR(500),
-    `created_by` VARCHAR(50),
-    `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
-    `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    `activated_at` DATETIME,
-
-    UNIQUE KEY `uk_agent_version` (`agent_type`, `version`),
-    INDEX idx_agent_status (agent_type, status)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-```
-
 ---
 
-## 10. API接口设计
+## 10. API接口设计（实际实现）
 
 ### 10.1 REST API
 
-| 方法           | 路径                                        | 描述           |
-| -------------- | ------------------------------------------- | -------------- |
-| **股票分析**   |                                             |                |
-| POST           | `/api/v1/analysis/stock`                    | 发起股票分析   |
-| GET            | `/api/v1/analysis/{reportId}`               | 获取分析报告   |
-| GET            | `/api/v1/analysis/history`                  | 获取分析历史   |
-| GET            | `/api/v1/analysis/export/{reportId}`        | 导出报告       |
-| **对话**       |                                             |                |
-| POST           | `/api/v1/chat/session`                      | 创建会话       |
-| GET            | `/api/v1/chat/session/{sessionId}`          | 获取会话       |
-| GET            | `/api/v1/chat/session/{sessionId}/messages` | 获取消息列表   |
-| **自选股**     |                                             |                |
-| GET            | `/api/v1/watchlist`                         | 获取自选股列表 |
-| POST           | `/api/v1/watchlist`                         | 添加自选股     |
-| DELETE         | `/api/v1/watchlist/{stockCode}`             | 删除自选股     |
-| **提示词管理** |                                             |                |
-| GET            | `/api/v1/prompts/{agentType}`               | 获取当前Prompt |
-| POST           | `/api/v1/prompts/{agentType}/version`       | 创建新版本     |
-| PUT            | `/api/v1/prompts/{agentType}/rollback`      | 回滚版本       |
-| GET            | `/api/v1/prompts/{agentType}/versions`      | 获取版本历史   |
+| 方法   | 路径                                      | 描述                         |
+| ------ | ----------------------------------------- | ---------------------------- |
+| **股票分析**                                                                  |
+| GET    | `/api/v1/analysis/stream`                 | SSE 流式分析（主入口）       |
+| POST   | `/api/v1/analysis/analyze`                | 同步分析（非流式）           |
+| GET    | `/api/v1/analysis/history`                | 获取最近50条分析记录         |
+| **对话**                                                                      |
+| POST   | `/api/v1/chat/session`                    | 创建/复用对话会话            |
+| POST   | `/api/v1/chat/message`                    | 发送对话消息（同步响应）     |
+| GET    | `/api/v1/chat/stream/{sessionId}`         | SSE 流式对话                 |
+| **股票**                                                                      |
+| GET    | `/api/v1/stocks/search?query=`            | 股票搜索（关键词匹配）       |
+| GET    | `/api/v1/stocks/watchlist`                | 获取自选股列表               |
+| POST   | `/api/v1/stocks/watchlist`                | 添加自选股                   |
+| DELETE | `/api/v1/stocks/watchlist/{stockCode}`    | 删除自选股                   |
+| **工程管理（Admin）**                                                         |
+| GET    | `/api/v1/admin/prompts/{agentType}`       | 获取当前激活 Prompt          |
+| POST   | `/api/v1/admin/prompts/{agentType}`       | 创建新 Prompt 版本           |
+| PUT    | `/api/v1/admin/prompts/{agentType}/rollback` | 回滚到上一版本            |
+| GET    | `/api/v1/admin/prompts/{agentType}/versions` | 获取版本历史列表          |
+| GET    | `/api/v1/admin/llm/health`               | LLM 健康检查                 |
+| **健康监控**                                                                  |
+| GET    | `/actuator/health`                        | Spring Boot Actuator 健康    |
+| GET    | `/actuator/metrics`                       | 指标端点                     |
 
-### 10.2 SSE流式API
+### 10.2 SSE 事件格式
 
-| 方法 | 路径                                  | 描述         |
-| ---- | ------------------------------------- | ------------ |
-| GET  | `/api/v1/stream/analysis/{stockCode}` | 流式股票分析 |
-| GET  | `/api/v1/stream/chat/{sessionId}`     | 流式对话     |
+分析流（`/api/v1/analysis/stream`）的 SSE 事件类型：
 
-### 10.3 API请求/响应示例
+| event 名称  | 触发时机             | data 内容                           |
+| ----------- | -------------------- | ----------------------------------- |
+| `stage`     | 每个 Agent 开始时    | `{stage, agentType, message}`       |
+| `result`    | 流水线全部完成时     | `ApiResponse<AnalysisReportDTO>`    |
+| `error`     | 异常时               | `{message}`                         |
+
+### 10.3 请求/响应示例
+
+```
+# 分析请求（SSE）
+GET /api/v1/analysis/stream?stockCode=600519&strategy=balanced&enableDebate=true
+
+# SSE 事件流：
+event: stage
+data: {"stage":"MARKET","agentType":"MARKET","message":"正在采集行情数据..."}
+
+event: stage
+data: {"stage":"TECHNICAL","agentType":"TECHNICAL","message":"正在进行技术分析..."}
+
+event: result
+data: {"code":200,"message":"success","data":{...AnalysisReportDTO...}}
+```
 
 ```json
-// POST /api/v1/analysis/stock
+// POST /api/v1/chat/message
 // 请求
 {
-  "stockCode": "000858",
-  "strategy": "balanced",
-  "includeDebate": true,
-  "indicators": ["MACD", "RSI", "KDJ", "MA"]
+  "sessionId": "sess-abc123",
+  "content": "这只股票的技术面怎么样？",
+  "agentType": "TECHNICAL"
 }
 
 // 响应
@@ -2756,507 +2389,226 @@ CREATE TABLE `prompt_version` (
   "code": 200,
   "message": "success",
   "data": {
-    "reportId": "rpt_20240427_001",
-    "stockCode": "000858",
-    "stockName": "五粮液",
-    "status": "PROCESSING",
-    "streamUrl": "/api/v1/stream/analysis/000858"
-  }
-}
-
-// GET /api/v1/analysis/{reportId}
-// 响应
-{
-  "code": 200,
-  "data": {
-    "id": "rpt_20240427_001",
-    "stockCode": "000858",
-    "stockName": "五粮液",
-    "finalSignal": "BUY",
-    "confidence": {
-      "value": 0.75,
-      "level": "MEDIUM"
-    },
-    "tradeSignal": {
-      "type": "BUY",
-      "entryPrice": 165.50,
-      "targetPrice": 180.00,
-      "stopLoss": 158.00,
-      "holdingPeriodDays": 30
-    },
-    "marketAnalysis": { ... },
-    "technicalAnalysis": { ... },
-    "sentimentAnalysis": { ... },
-    "debateJudgment": {
-      "finalPosition": "BULLISH",
-      "reasoning": "技术面MACD金叉，基本面业绩稳健...",
-      "voteBreakdown": { "bull": 7, "bear": 2, "neutral": 1 }
-    },
-    "createdAt": "2026-04-27T10:30:00"
+    "role": "assistant",
+    "content": "从技术面来看，该股 MACD 金叉信号...",
+    "agentType": "TECHNICAL",
+    "agentName": "技术分析Agent"
   }
 }
 ```
 
 ---
 
-## 11. 数据源集成
+## 11. 数据源集成（实际实现）
 
-### 11.1 数据源适配器设计
+当前版本使用**内置静态数据**模式，`MarketAgent` 内置约 50 只常见 A 股的模拟行情数据（`STOCK_DATA` 静态 Map）。通过环境变量 `FETCH_REAL_DATA=true` 可切换到真实数据拉取模式。
 
-```java
-/**
- * 数据源适配器接口
- */
-public interface DataSourceAdapter {
+**已规划但未实现的真实数据源**（保留为扩展方向）：
+- Tushare Pro API（需 Token）
+- AKShare（东方财富接口代理）
 
-    /**
-     * 获取适配器名称
-     */
-    String getName();
-
-    /**
-     * 获取实时行情
-     */
-    MarketData getRealtimeQuote(String stockCode);
-
-    /**
-     * 获取历史K线
-     */
-    KLineHistory getKLineHistory(String stockCode, int days);
-
-    /**
-     * 获取股票基本信息
-     */
-    StockBasicInfo getBasicInfo(String stockCode);
-
-    /**
-     * 获取财务数据
-     */
-    FinancialData getFinancialData(String stockCode);
-
-    /**
-     * 健康检查
-     */
-    boolean isHealthy();
-}
-
-/**
- * 数据源工厂
- */
-@Service
-@RequiredArgsConstructor
-public class DataSourceFactory {
-
-    private final Map<String, DataSourceAdapter> adapters = new HashMap<>();
-
-    @PostConstruct
-    public void init() {
-        // 自动注册所有实现
-        adapters.put("tushare", new TushareAdapter());
-        adapters.put("akshare", new AkShareAdapter());
-    }
-
-    public DataSourceAdapter getAdapter(String name) {
-        DataSourceAdapter adapter = adapters.get(name.toLowerCase());
-        if (adapter == null) {
-            throw new DataSourceException("未找到数据源适配器: " + name);
-        }
-        return adapter;
-    }
-
-    /**
-     * 获取最佳可用适配器
-     */
-    public DataSourceAdapter getBestAvailable() {
-        for (DataSourceAdapter adapter : adapters.values()) {
-            if (adapter.isHealthy()) {
-                return adapter;
-            }
-        }
-        throw new DataSourceException("所有数据源均不可用");
-    }
-}
-```
-
-### 11.2 Tushare适配器
-
-```java
-/**
- * Tushare数据源适配器
- */
-@Service
-@RequiredArgsConstructor
-public class TushareAdapter implements DataSourceAdapter {
-
-    private static final String NAME = "tushare";
-    private final RestTemplate restTemplate;
-
-    @Value("${datasource.tushare.token}")
-    private String token;
-
-    @Override
-    public String getName() {
-        return NAME;
-    }
-
-    @Override
-    public MarketData getRealtimeQuote(String stockCode) {
-        String api = "http://api.tushare.pro";
-        String params = buildParams(Map.of(
-            "api_name", "quotes",
-            "token", token,
-            "params", Map.of("ts_code", normalizeStockCode(stockCode)),
-            "fields", "ts_code,name,open,high,low,close,vol,amount,turnoverrate"
-        ));
-
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        HttpEntity<String> request = new HttpEntity<>(params, headers);
-
-        ResponseEntity<TushareResponse> response = restTemplate.postForEntity(
-            api, request, TushareResponse.class);
-
-        return parseRealtimeQuote(response.getBody());
-    }
-
-    @Override
-    public KLineHistory getKLineHistory(String stockCode, int days) {
-        String api = "http://api.tushare.pro";
-        String endDate = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
-        String startDate = LocalDate.now().minusDays(days)
-            .format(DateTimeFormatter.BASIC_ISO_DATE);
-
-        String params = buildParams(Map.of(
-            "api_name", "daily",
-            "token", token,
-            "params", Map.of(
-                "ts_code", normalizeStockCode(stockCode),
-                "start_date", startDate,
-                "end_date", endDate
-            ),
-            "fields", "ts_code,trade_date,open,high,low,close,vol"
-        ));
-
-        // 调用API并解析...
-        return parseKLineHistory(response.getBody());
-    }
-
-    private String normalizeStockCode(String stockCode) {
-        // 000858 -> 000858.SZ
-        if (stockCode.matches("\\d{6}")) {
-            if (stockCode.startsWith("6")) {
-                return stockCode + ".SH";
-            } else {
-                return stockCode + ".SZ";
-            }
-        }
-        return stockCode;
-    }
-
-    @Override
-    public boolean isHealthy() {
-        try {
-            // 简单健康检查
-            getRealtimeQuote("000001");
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-}
-```
-
-### 11.3 AKShare适配器
-
-```java
-/**
- * AKShare数据源适配器
- */
-@Service
-@RequiredArgsConstructor
-public class AkShareAdapter implements DataSourceAdapter {
-
-    private static final String NAME = "akshare";
-
-    private final RestTemplate restTemplate;
-
-    @Override
-    public String getName() {
-        return NAME;
-    }
-
-    @Override
-    public MarketData getRealtimeQuote(String stockCode) {
-        String url = "http://push2.eastmoney.com/api/qt/stock/get";
-        String params = String.format(
-            "?secid=%s&fields=f43,f44,f45,f46,f47,f48,f57,f58,f107,f169,f170",
-            getMarketCode(stockCode));
-
-        ResponseEntity<String> response = restTemplate.getForEntity(url + params, String.class);
-        return parseRealtimeQuote(response.getBody());
-    }
-
-    @Override
-    public KLineHistory getKLineHistory(String stockCode, int days) {
-        String url = "http://push2his.eastmoney.com/api/qt/stock/kline/get";
-        String params = String.format(
-            "?secid=%s&fields1=f1,f2,f3,f4,f5,f6&fields2=f51,f52,f53,f54,f55,f56,f57,f58",
-            getMarketCode(stockCode));
-
-        ResponseEntity<String> response = restTemplate.getForEntity(url + params, String.class);
-        return parseKLineHistory(response.getBody());
-    }
-
-    @Override
-    public boolean isHealthy() {
-        try {
-            getRealtimeQuote("000001");
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-}
-```
+**扩展方式**：实现 `DataSourceAdapter` 接口并注册到 `DataSourceFactory` 即可热插拔，不需要修改 Agent 逻辑。
 
 ---
 
-## 12. 部署方案
+## 12. 部署方案（实际实现）
 
-### 12.1 Docker Compose部署
+### 12.1 Docker Compose 部署（含健康检查）
 
 ```yaml
-# docker-compose.yml
-version: "3.8"
-
+# docker-compose.yml（实际落地版）
 services:
-  # 后端应用
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: alphamind
+      POSTGRES_USER: ${DB_USERNAME:-alphamind}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-alphamind123}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-alphamind}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis123}
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis123}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build: ./backend
     ports:
       - "8080:8080"
     environment:
-      - SPRING_PROFILES_ACTIVE=prod
-      - SPRING_REDIS_HOST=redis
-      - SPRING_REDIS_PORT=6379
-      - SPRING_DATASOURCE_URL=jdbc:mysql://mysql:3306/stock_analysis
-      - SPRING_DATASOURCE_USERNAME=${DB_USER}
-      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      SPRING_PROFILES_ACTIVE: prod
+      DB_USERNAME: ${DB_USERNAME:-alphamind}
+      DB_PASSWORD: ${DB_PASSWORD:-alphamind123}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-redis123}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     depends_on:
-      - mysql
-      - redis
-    networks:
-      - stock-network
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
-  # 前端
   frontend:
     build: ./frontend
     ports:
-      - "3000:80"
+      - "3000:3000"
     depends_on:
-      - backend
-    networks:
-      - stock-network
-
-  # MySQL数据库
-  mysql:
-    image: mysql:8.0
-    environment:
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-      - MYSQL_DATABASE=stock_analysis
-      - MYSQL_USER=${DB_USER}
-      - MYSQL_PASSWORD=${DB_PASSWORD}
-    volumes:
-      - mysql-data:/var/lib/mysql
-      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-    ports:
-      - "3306:3306"
-    networks:
-      - stock-network
-
-  # Redis缓存
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    networks:
-      - stock-network
-
-  # 向量数据库 (可选: Milvus/Qdrant)
-  # qdrant:
-  #   image: qdrant/qdrant:latest
-  #   ports:
-  #     - "6333:6333"
-  #   volumes:
-  #     - qdrant-data:/qdrant/storage
-
-networks:
-  stock-network:
-    driver: bridge
+      backend:
+        condition: service_healthy
 
 volumes:
-  mysql-data:
+  postgres-data:
   redis-data:
-  # qdrant-data:
 ```
 
-### 12.2 环境变量配置
+### 12.2 环境变量配置（.env.example）
 
 ```bash
-# .env
-# 数据库
-MYSQL_ROOT_PASSWORD=your_root_password
-DB_USER=stock_user
-DB_PASSWORD=your_secure_password
-
-# LLM API Keys
+# LLM API Keys（至少配置一个）
 OPENAI_API_KEY=sk-xxxxx
 DEEPSEEK_API_KEY=sk-xxxxx
-ZHIPU_API_KEY=xxxxx
+ANTHROPIC_API_KEY=sk-xxxxx
 
-# Tushare Token
-TUSHARE_TOKEN=xxxxx
+# 数据库（生产环境必须修改）
+DB_USERNAME=alphamind
+DB_PASSWORD=your_secure_password
+
+# Redis
+REDIS_PASSWORD=your_redis_password
+
+# 跨域（前端地址）
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+
+# 数据源模式（true=真实数据，false=模拟数据）
+FETCH_REAL_DATA=false
 ```
 
-### 12.3 应用配置
+### 12.3 Dockerfile（后端，含 JVM 调优）
 
-```yaml
-# application-prod.yml
-spring:
-  application:
-    name: stock-analysis-system
+```dockerfile
+# backend/Dockerfile
+FROM eclipse-temurin:17-jre-alpine
 
-  datasource:
-    url: jdbc:mysql://${DB_HOST}:3306/stock_analysis?useSSL=false&serverTimezone=Asia/Shanghai
-    username: ${DB_USER}
-    password: ${DB_PASSWORD}
-    hikari:
-      maximum-pool-size: 20
-      minimum-idle: 5
+# 安装 curl 用于健康检查
+RUN apk add --no-cache curl
 
-  redis:
-    host: ${REDIS_HOST}
-    port: 6379
-    timeout: 5000
+WORKDIR /app
+COPY target/*.jar app.jar
 
-  ai:
-    openai:
-      api-key: ${OPENAI_API_KEY}
-      base-url: https://api.openai.com
-    deepseek:
-      api-key: ${DEEPSEEK_API_KEY}
-      base-url: https://api.deepseek.com
+# JVM 调优：容器感知内存分配 + G1GC + OOM 快速失败
+ENV JAVA_OPTS="-XX:+UseContainerSupport \
+  -XX:MaxRAMPercentage=75.0 \
+  -XX:InitialRAMPercentage=50.0 \
+  -XX:+UseG1GC \
+  -XX:+ExitOnOutOfMemoryError"
 
-datasource:
-  tushare:
-    token: ${TUSHARE_TOKEN}
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics
+EXPOSE 8080
+ENTRYPOINT sh -c "java $JAVA_OPTS -jar /app/app.jar"
 ```
+
+### 12.4 Spring Profile 说明
+
+| Profile | 数据库配置                         | Redis    | 用途          |
+| ------- | ---------------------------------- | -------- | ------------- |
+| `dev`   | H2 内存数据库（JPA 自动建表）      | 可选     | 本地开发      |
+| `prod`  | PostgreSQL（Flyway 迁移）          | 必须     | 生产/容器部署 |
+
+本地开发启动命令：
+```bash
+cd backend
+SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run
+```
+
+### 12.5 健康监控端点
+
+| 端点                      | 说明                                   |
+| ------------------------- | -------------------------------------- |
+| `GET /actuator/health`    | 整体健康状态（DB/Redis/LLM）           |
+| `GET /actuator/metrics`   | JVM / HTTP / 自定义指标                |
+| `GET /actuator/info`      | 应用版本信息                           |
 
 ---
 
-## 13. 开发计划
+## 13. 开发计划（实际完成情况）
 
-### 13.1 里程碑规划
+### 13.1 阶段完成状态
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         开发里程碑                                       │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  Phase 1: 基础架构 (2周)                                                │
-│  ├── 项目脚手架搭建                                                     │
-│  ├── 包结构和基础配置                                                   │
-│  ├── 数据模型设计                                                       │
-│  └── 数据库初始化                                                       │
-│                           ▼                                             │
-│  Phase 2: 数据源层 (1周)                                                │
-│  ├── Tushare适配器实现                                                  │
-│  ├── AKShare适配器实现                                                  │
-│  └── 技术指标计算                                                       │
-│                           ▼                                             │
-│  Phase 3: Pipeline Agent (2周)                                          │
-│  ├── Agent基类开发                                                      │
-│  ├── 行情Agent实现                                                      │
-│  ├── 技术Agent实现                                                      │
-│  ├── 舆情Agent实现                                                      │
-│  ├── 投资经理Agent实现                                                  │
-│  └── Pipeline编排器                                                      │
-│                           ▼                                             │
-│  Phase 4: 辩论系统 (2周)                                                │
-│  ├── 多头/空头/中立Agent                                                │
-│  ├── 仲裁官Agent                                                        │
-│  └── 辩论编排器                                                         │
-│                           ▼                                             │
-│  Phase 5: 工程能力 (2周)                                                │
-│  ├── LLM管理器                                                          │
-│  ├── 熔断降级机制                                                       │
-│  ├── 提示词版本管理                                                     │
-│  ├── SSE流式输出                                                       │
-│  └── 记忆系统                                                          │
-│                           ▼                                             │
-│  Phase 6: 前端开发 (3周)                                                │
-│  ├── 项目搭建                                                           │
-│  ├── K线图组件                                                          │
-│  ├── Agent对话面板                                                      │
-│  ├── 自选股管理                                                         │
-│  └── 分析报告导出                                                       │
-│                           ▼                                             │
-│  Phase 7: 策略与优化 (1周)                                              │
-│  ├── 策略系统实现                                                       │
-│  ├── 系统优化                                                           │
-│  └── 部署上线                                                           │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+| 阶段        | 名称                   | 状态         | 主要交付物                                                                          |
+| ----------- | ---------------------- | ------------ | ----------------------------------------------------------------------------------- |
+| **Phase 1** | 基础架构               | ✅ 已完成    | Spring Boot 脚手架、包结构、配置层、数据库 Schema（PostgreSQL + Flyway）           |
+| **Phase 2** | 数据源层               | ✅ 已完成    | StockService（内置50+只股票静态数据）、MarketAgent 数据采集                        |
+| **Phase 3** | 流水线 Agent            | ✅ 已完成    | MarketAgent、TechnicalAgent（MACD/RSI/KDJ/布林带）、SentimentAgent、PortfolioAgent + PipelineOrchestrator |
+| **Phase 4** | 辩论系统               | ✅ 已完成    | BullAgent、BearAgent、NeutralAgent、ArbitratorAgent + DebateOrchestrator            |
+| **Phase 5** | 工程能力               | ✅ 已完成    | LlmManager（自实现熔断）、PromptManager（内存版本管理）、MemoryService（Redis+内存 fallback）、SSE 流式 |
+| **Phase 6** | 前端开发               | ✅ 已完成    | Next.js 16 脚手架、K线图（ECharts）、Agent 对话、自选股管理、报告导出（JSON+Markdown） |
+| **Phase 7** | 策略与系统优化         | ✅ 已完成    | StrategyProfile 体系、ThreadLocal 并发修复、Docker 健康检查、Actuator、JVM 调优、.env.example |
 
 ### 13.2 详细任务分解
 
-| 阶段        | 任务               | 预估工时 | 负责人 |
-| ----------- | ------------------ | -------- | ------ |
-| **Phase 1** | 项目脚手架         | 4h       |        |
-|             | 依赖配置           | 2h       |        |
-|             | 包结构             | 1h       |        |
-|             | 数据模型           | 4h       |        |
-|             | 数据库脚本         | 2h       |        |
-| **Phase 2** | 数据源接口         | 2h       |        |
-|             | Tushare适配器      | 8h       |        |
-|             | AKShare适配器      | 6h       |        |
-|             | 技术指标计算       | 8h       |        |
-| **Phase 3** | Agent基类          | 4h       |        |
-|             | 消息路由器         | 4h       |        |
-|             | MarketAgent        | 6h       |        |
-|             | TechnicalAgent     | 8h       |        |
-|             | SentimentAgent     | 6h       |        |
-|             | PortfolioAgent     | 6h       |        |
-|             | Pipeline编排器     | 4h       |        |
-| **Phase 4** | BullAgent          | 6h       |        |
-|             | BearAgent          | 6h       |        |
-|             | NeutralAgent       | 4h       |        |
-|             | ArbitratorAgent    | 8h       |        |
-|             | DebateOrchestrator | 6h       |        |
-| **Phase 5** | LLMManager         | 8h       |        |
-|             | 熔断降级           | 4h       |        |
-|             | 提示词管理         | 6h       |        |
-|             | SSE流式            | 6h       |        |
-|             | 记忆系统           | 8h       |        |
-| **Phase 6** | 前端脚手架         | 4h       |        |
-|             | K线图组件          | 12h      |        |
-|             | Agent对话          | 16h      |        |
-|             | 自选股管理         | 8h       |        |
-|             | 报告导出           | 6h       |        |
-| **Phase 7** | 策略系统           | 8h       |        |
-|             | 优化测试           | 8h       |        |
-|             | 部署上线           | 4h       |        |
-
-**总计预估**: ~200工时
+| 阶段        | 任务                   | 状态      |
+| ----------- | ---------------------- | --------- |
+| **Phase 1** | 项目脚手架             | ✅ 完成   |
+|             | 依赖配置（pom.xml）    | ✅ 完成   |
+|             | 包结构 com.alphamind   | ✅ 完成   |
+|             | 数据模型（实体+DTO+枚举）| ✅ 完成  |
+|             | PostgreSQL 迁移脚本    | ✅ 完成   |
+| **Phase 2** | StockService 静态数据  | ✅ 完成   |
+|             | MarketAgent 行情采集   | ✅ 完成   |
+| **Phase 3** | BaseAgent（ThreadLocal）| ✅ 完成  |
+|             | AgentRouter            | ✅ 完成   |
+|             | MarketAgent            | ✅ 完成   |
+|             | TechnicalAgent         | ✅ 完成   |
+|             | SentimentAgent         | ✅ 完成   |
+|             | PortfolioAgent         | ✅ 完成   |
+|             | PipelineOrchestrator   | ✅ 完成   |
+| **Phase 4** | BullAgent              | ✅ 完成   |
+|             | BearAgent              | ✅ 完成   |
+|             | NeutralAgent           | ✅ 完成   |
+|             | ArbitratorAgent        | ✅ 完成   |
+|             | DebateOrchestrator     | ✅ 完成   |
+| **Phase 5** | LlmManager（自实现熔断）| ✅ 完成  |
+|             | PromptManager          | ✅ 完成   |
+|             | MemoryService          | ✅ 完成   |
+|             | AnalysisController SSE | ✅ 完成   |
+|             | AdminController        | ✅ 完成   |
+| **Phase 6** | Next.js 16 脚手架      | ✅ 完成   |
+|             | KLineChart（ECharts）  | ✅ 完成   |
+|             | AgentMessage/Selector  | ✅ 完成   |
+|             | 自选股管理页面         | ✅ 完成   |
+|             | reportExport 工具      | ✅ 完成   |
+|             | useSSE hook            | ✅ 完成   |
+| **Phase 7** | StrategyProfile 接口   | ✅ 完成   |
+|             | 三策略具体实现         | ✅ 完成   |
+|             | StrategySignalPlanner  | ✅ 完成   |
+|             | StrategyModeResolver   | ✅ 完成   |
+|             | ThreadLocal 并发修复   | ✅ 完成   |
+|             | Docker 健康检查        | ✅ 完成   |
+|             | Spring Boot Actuator   | ✅ 完成   |
+|             | JVM 调优参数           | ✅ 完成   |
+|             | .env.example           | ✅ 完成   |
 
 ---
 
@@ -3300,12 +2652,14 @@ J = 3*K - 2*D
 
 ### C. 参考资源
 
-- Spring AI官方文档: https://docs.spring.io/spring-ai/
-- AKShare文档: https://akshare.akfamily.xyz/
-- Tushare文档: https://tushare.pro/document
-- ECharts文档: https://echarts.apache.org/
+- Spring AI 官方文档: https://docs.spring.io/spring-ai/
+- Next.js 16 文档: https://nextjs.org/docs
+- ECharts 文档: https://echarts.apache.org/
+- PostgreSQL 16 文档: https://www.postgresql.org/docs/
 
 ---
 
-_文档版本: v1.0.0_
-_最后更新: 2026-04-27_
+_文档版本: v2.0.0_
+_最后更新: 2026-05-01_
+_所有 Phase 1-7 已交付完成_
+
