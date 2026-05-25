@@ -14,7 +14,8 @@
       "Bash(curl *)",
       "Bash(git log *)",
       "Bash(docker compose up *)",
-      "Skill(commit-commands:commit)"
+      "Skill(commit-commands:commit)",
+      "Skill(commit-commands:commit-push-pr)"
     ]
   },
   "outputStyle": "Explanatory",
