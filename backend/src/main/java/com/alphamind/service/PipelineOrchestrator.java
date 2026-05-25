@@ -5,6 +5,8 @@ import com.alphamind.model.dto.*;
 import com.alphamind.model.enums.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -24,6 +26,11 @@ public class PipelineOrchestrator {
     private final SentimentAgent sentimentAgent;
     private final PortfolioAgent portfolioAgent;
     private final DebateOrchestrator debateOrchestrator;
+
+    /** 向量记忆服务（可选，无 Redis Stack 时自动降级） */
+    @Autowired(required = false)
+    @Lazy
+    private VectorMemoryService vectorMemoryService;
 
     /**
      * 执行流水线分析
@@ -48,38 +55,47 @@ public class PipelineOrchestrator {
                 .createdAt(LocalDateTime.now())
                 .build();
 
+        // ── 历史上下文召回（向量记忆）────────────────────────────────────────
+        String contextSummary = null;
+        if (vectorMemoryService != null && vectorMemoryService.isAvailable()) {
+            contextSummary = vectorMemoryService.recall(stockCode);
+            if (contextSummary != null) {
+                log.info("召回到历史分析上下文: stockCode={}", stockCode);
+            }
+        }
+
         try {
             // 设置策略
             final StrategyType finalStrategy = strategy != null ? strategy : StrategyType.BALANCED;
 
             // Stage 1: Market Agent - 采集行情数据
             emit(eventConsumer, AnalysisStage.MARKET, "正在采集行情数据...");
-            initializeAgentContext(marketAgent, report, finalStrategy);
+            initializeAgentContext(marketAgent, report, finalStrategy, contextSummary);
             report = marketAgent.analyze(report);
             emitData(eventConsumer, AgentType.MARKET, report.getMarketData());
 
             // Stage 2: Technical Agent - 技术指标分析
             emit(eventConsumer, AnalysisStage.TECHNICAL, "正在进行技术分析...");
-            initializeAgentContext(technicalAgent, report, finalStrategy);
+            initializeAgentContext(technicalAgent, report, finalStrategy, contextSummary);
             report = technicalAgent.analyze(report);
             emitData(eventConsumer, AgentType.TECHNICAL, report.getTechnicalIndicators());
 
             // Stage 3: Sentiment Agent - 舆情分析
             emit(eventConsumer, AnalysisStage.SENTIMENT, "正在分析舆情数据...");
-            initializeAgentContext(sentimentAgent, report, finalStrategy);
+            initializeAgentContext(sentimentAgent, report, finalStrategy, contextSummary);
             report = sentimentAgent.analyze(report);
             emitData(eventConsumer, AgentType.SENTIMENT, report.getSentimentData());
 
             // Stage 4: Portfolio Agent - 综合决策
             emit(eventConsumer, AnalysisStage.PORTFOLIO, "正在生成投资建议...");
-            initializeAgentContext(portfolioAgent, report, finalStrategy);
+            initializeAgentContext(portfolioAgent, report, finalStrategy, contextSummary);
             report = portfolioAgent.analyze(report);
             emitData(eventConsumer, AgentType.PORTFOLIO, report.getTradeSignal());
 
             // Stage 5: Debate (optional) - 多空辩论
             if (enableDebate) {
                 emit(eventConsumer, AnalysisStage.DEBATE, "正在进行多空辩论...");
-                report = debateOrchestrator.runDebate(report, eventConsumer);
+                report = debateOrchestrator.runDebate(report, eventConsumer, contextSummary);
             }
 
             // Complete
@@ -87,6 +103,11 @@ public class PipelineOrchestrator {
 
             log.info("流水线分析完成: stockCode={}, signal={}",
                     stockCode, report.getTradeSignal().getType());
+
+            // ── 分析完成后存入向量记忆 ─────────────────────────────────────
+            if (vectorMemoryService != null) {
+                vectorMemoryService.store(report);
+            }
 
             return report;
 
@@ -109,11 +130,15 @@ public class PipelineOrchestrator {
         }
     }
 
-    private void initializeAgentContext(BaseAgent agent, AnalysisReportDTO report, StrategyType strategy) {
+    private void initializeAgentContext(BaseAgent agent, AnalysisReportDTO report,
+                                         StrategyType strategy, String contextSummary) {
         agent.clearContext();
         agent.setContext("stockCode", report.getStockCode());
         agent.setContext("stockName", report.getStockName());
         agent.setContext("strategy", strategy);
+        if (contextSummary != null) {
+            agent.setContext("contextSummary", contextSummary);
+        }
         if (report.getMarketData() != null) {
             agent.setContext("marketData", report.getMarketData());
         }
