@@ -2,6 +2,8 @@ package com.alphamind.agent;
 
 import com.alphamind.model.dto.*;
 import com.alphamind.model.enums.AgentType;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -19,6 +21,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 /**
  * 行情Agent - 负责采集和处理股票行情数据
@@ -107,6 +110,11 @@ public class MarketAgent extends BaseAgent {
     @Value("${alphamind.market.fetch-real-data:false}")
     private boolean fetchRealData;
 
+    @Value("${alphamind.market.kline-days:120}")
+    private int klineDays;
+
+    private static final ObjectMapper KLINE_MAPPER = new ObjectMapper();
+
     private static final RestTemplate REST_TEMPLATE;
     static {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -118,6 +126,63 @@ public class MarketAgent extends BaseAgent {
     /** Sina Finance 行情记录 */
     private record SinaQuote(String name, double open, double prevClose, double current,
                              double high, double low, long volumeLots, double amount) {}
+
+    /** 东方财富历史 K 线原始记录（前复权日K）*/
+    private record EmKlineRecord(String date, double open, double close,
+                                 double high, double low, long volume) {}
+
+    /** 将 A 股代码转换为东方财富 secid（1=SH, 0=SZ/BJ）*/
+    private String toEastMoneySecid(String code) {
+        if (code.startsWith("6") || code.startsWith("9")) return "1." + code;
+        return "0." + code;
+    }
+
+    /**
+     * 调用东方财富历史 K 线接口，返回前复权日K 列表（按时间升序）。
+     * 失败或数据为空时返回空 List，调用方降级为生成式数据。
+     */
+    private List<EmKlineRecord> fetchKlineFromEastMoney(String stockCode, int days) {
+        try {
+            String secid = toEastMoneySecid(stockCode);
+            // fields2: f51=date f52=open f53=close f54=high f55=low f56=volume(手)
+            String url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
+                    + "?secid=" + secid
+                    + "&fields1=f1,f2,f3,f4,f5,f6"
+                    + "&fields2=f51,f52,f53,f54,f55,f56"
+                    + "&klt=101&fqt=1&end=20500101"
+                    + "&lmt=" + Math.max(days, 60);
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("User-Agent", "Mozilla/5.0 (compatible; AlphaMind/1.0)");
+            ResponseEntity<String> resp = REST_TEMPLATE.exchange(
+                    url, HttpMethod.GET, new HttpEntity<>(headers), String.class);
+            if (resp.getBody() == null) return List.of();
+
+            JsonNode klines = KLINE_MAPPER.readTree(resp.getBody())
+                    .path("data").path("klines");
+            if (!klines.isArray() || klines.isEmpty()) return List.of();
+
+            List<EmKlineRecord> result = new ArrayList<>();
+            for (JsonNode node : klines) {
+                String[] p = node.asText().split(",");
+                if (p.length < 6) continue;
+                try {
+                    result.add(new EmKlineRecord(
+                            p[0],
+                            Double.parseDouble(p[1]),           // open
+                            Double.parseDouble(p[2]),           // close
+                            Double.parseDouble(p[3]),           // high
+                            Double.parseDouble(p[4]),           // low
+                            (long)(Double.parseDouble(p[5]) * 100) // 手 → 股
+                    ));
+                } catch (NumberFormatException ignored) {}
+            }
+            log.debug("EastMoney K-line: {} records for {}", result.size(), stockCode);
+            return result;
+        } catch (Exception e) {
+            log.debug("EastMoney K-line unavailable for {}: {}", stockCode, e.getMessage());
+            return List.of();
+        }
+    }
 
     public MarketAgent() {
         super(AgentType.MARKET);
@@ -378,8 +443,37 @@ public class MarketAgent extends BaseAgent {
             }
         }
 
-        // 用同一条 K 线序列计算均线，保证数据一致性
-        List<double[]> klineData = generateKlineData(basePrice, 60);
+        // ── K 线数据（优先使用真实历史数据）──────────────────────────────────
+        List<String> klineDatesList;
+        List<double[]> klineData;
+        List<Long> klineVolumesList;
+
+        if (fetchRealData) {
+            List<EmKlineRecord> realKlines = fetchKlineFromEastMoney(stockCode, klineDays);
+            if (!realKlines.isEmpty()) {
+                klineDatesList  = realKlines.stream().map(EmKlineRecord::date).collect(Collectors.toList());
+                klineData       = realKlines.stream()
+                        .map(r -> new double[]{r.open(), r.close(), r.low(), r.high()})
+                        .collect(Collectors.toList());
+                klineVolumesList = realKlines.stream().map(EmKlineRecord::volume).collect(Collectors.toList());
+                // 以真实K线末条收盘价修正当日价格（若 Sina 实时价未能覆盖）
+                double lastClose = realKlines.get(realKlines.size() - 1).close();
+                if (basePrice == STOCK_DATA.getOrDefault(stockCode, new double[]{0})[0]) {
+                    basePrice = lastClose;
+                }
+                log.info("Real K-line loaded for {}: {} days, last close={}", stockCode,
+                        realKlines.size(), lastClose);
+            } else {
+                log.debug("EastMoney K-line empty for {}, using generated data", stockCode);
+                klineData        = generateKlineData(basePrice, klineDays);
+                klineDatesList   = generateKlineDates(klineDays);
+                klineVolumesList = generateKlineVolumes(volume, klineDays);
+            }
+        } else {
+            klineData        = generateKlineData(basePrice, klineDays);
+            klineDatesList   = generateKlineDates(klineDays);
+            klineVolumesList = generateKlineVolumes(volume, klineDays);
+        }
 
         return MarketDataDTO.builder()
                 .stockCode(stockCode)
@@ -397,9 +491,9 @@ public class MarketAgent extends BaseAgent {
                 .pb(Math.round(pb * 10) / 10.0)
                 .marketCap((long) marketCap)
                 .updateTime(java.time.LocalDateTime.now().toString())
-                .klineDates(generateKlineDates(60))
+                .klineDates(klineDatesList)
                 .klines(klineData)
-                .klineVolumes(generateKlineVolumes(volume, 60))
+                .klineVolumes(klineVolumesList)
                 .ma5(calculateMA(klineData, 5))
                 .ma10(calculateMA(klineData, 10))
                 .ma20(calculateMA(klineData, 20))

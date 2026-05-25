@@ -6,6 +6,33 @@ alphamind:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   market:
     fetch-real-data: ${FETCH_REAL_DATA:false}
+    kline-days: ${KLINE_DAYS:120}
+  # LLM Provider Selection
+  llm:
+    primary-provider: openai
+    fallback-providers:
+      - deepseek
+      - anthropic
+    timeout-seconds: 120
+  # Analysis Configuration
+  analysis:
+    max-history-recall: 5
+    confidence-threshold: 0.6
+    default-holding-days: 30
+  # Debate Configuration
+  debate:
+    max-rounds: 3
+    voting-threshold: 0.5
+    confidence-weight: 0.4
+  # SSE Configuration
+  sse:
+    heartbeat-interval-seconds: 30
+    reconnect-enabled: true
+  # Memory Configuration
+  memory:
+    enabled: true
+    ttl-hours: 24
+    vector-dimensions: 1536
 
 spring:
   application:
@@ -82,6 +109,13 @@ management:
 
 # Spring AI Configuration
 spring.ai:
+  # Redis Vector Store —— 向量记忆（需要 Redis Stack 模块；无 Stack 时自动降级不影响启动）
+  vectorstore:
+    redis:
+      index: alphamind-analysis
+      prefix: "alphamind:vec:"
+      initialize-schema: false
+
   # OpenAI Configuration
   openai:
     api-key: ${OPENAI_API_KEY:}
@@ -111,39 +145,6 @@ spring.ai:
         model: claude-sonnet-4-20250514
         temperature: 0.7
         max-tokens: 4096
-
-# AlphaMind Application Configuration
-alphamind:
-  # LLM Provider Selection
-  llm:
-    primary-provider: openai
-    fallback-providers:
-      - deepseek
-      - anthropic
-    timeout-seconds: 120
-
-  # Analysis Configuration
-  analysis:
-    max-history-recall: 5
-    confidence-threshold: 0.6
-    default-holding-days: 30
-
-  # Debate Configuration
-  debate:
-    max-rounds: 3
-    voting-threshold: 0.5
-    confidence-weight: 0.4
-
-  # SSE Configuration
-  sse:
-    heartbeat-interval-seconds: 30
-    reconnect-enabled: true
-
-  # Memory Configuration
-  memory:
-    enabled: true
-    ttl-hours: 24
-    vector-dimensions: 1536
 
 # Logging
 logging:

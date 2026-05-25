@@ -50,7 +50,8 @@ public class PortfolioAgent extends BaseAgent {
             );
 
             // 用LLM增强投资理由
-            String aiRationale = generateAiRationale(marketData, technicalIndicators, sentimentData, strategy, tradeSignal);
+            String contextSummary = getContext("contextSummary");
+            String aiRationale = generateAiRationale(marketData, technicalIndicators, sentimentData, strategy, tradeSignal, contextSummary);
             if (aiRationale != null) {
                 tradeSignal.setRationale(aiRationale);
             }
@@ -131,7 +132,8 @@ public class PortfolioAgent extends BaseAgent {
     }
 
     private String generateAiRationale(MarketDataDTO market, TechnicalIndicatorsDTO tech,
-                                        SentimentDataDTO sentiment, StrategyProfile strategy, TradeSignalDTO signal) {
+                                        SentimentDataDTO sentiment, StrategyProfile strategy, TradeSignalDTO signal,
+                                        String contextSummary) {
         String prompt = String.format("""
                 综合分析数据如下：
                 - 股票: %s (%s) 当前价: ¥%.2f 涨跌: %+.2f%%
@@ -150,6 +152,9 @@ public class PortfolioAgent extends BaseAgent {
                 strategy.getHoldingPeriodDays(),
                 signal.getType().getLabel(),
                 signal.getTargetPrice(), signal.getStopLoss());
+        if (contextSummary != null && !contextSummary.isBlank()) {
+            prompt += "\n\n【历史分析参考（仅供参考，不构成决策依据）】\n" + contextSummary;
+        }
         return llmCall(getSystemPrompt(), prompt);
     }
 
