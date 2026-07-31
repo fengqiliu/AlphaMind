@@ -70,6 +70,8 @@ node_modules/
 
 # Testing
 coverage/
+playwright-report/
+test-results/
 
 # Next.js build output
 .next/
@@ -87,6 +89,7 @@ dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.npm-cache/
 
 # Local env files
 .env*.local

@@ -90,6 +90,18 @@ public class ArbitratorAgent extends BaseAgent {
     public ChatMessage chat(ChatMessage userMessage) {
         JudgmentDTO judgment = getContext("judgment");
 
+        if (judgment == null) {
+            return ChatMessage.builder()
+                    .id(UUID.randomUUID().toString())
+                    .role("assistant")
+                    .content("暂无仲裁结论，请先对当前股票发起一次辩论模式分析。")
+                    .agentType(agentType)
+                    .agentName(agentType.getName())
+                    .modelUsed(getModelName())
+                    .timestamp(java.time.LocalDateTime.now())
+                    .build();
+        }
+
         String response = String.format("""
             **【仲裁官最终裁决】**
 

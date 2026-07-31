@@ -96,10 +96,10 @@ export interface KLineData {
   dates: string[];
   klines: [number, number, number, number][];
   volumes: number[];
-  ma5: number[];
-  ma10: number[];
-  ma20: number[];
-  ma60: number[];
+  ma5: (number | null)[];
+  ma10: (number | null)[];
+  ma20: (number | null)[];
+  ma60: (number | null)[];
 }
 
 // 行情数据
@@ -201,7 +201,7 @@ export interface AnalysisReport {
   marketData: MarketData;
   technicalIndicators: TechnicalIndicators;
   sentimentData: SentimentData;
-  judgment: Judgment;
+  judgment?: Judgment;
   /** 辩论模式下三方各自的观点 */
   debateViews?: DebateView[];
   createdAt: string;

@@ -6,6 +6,27 @@ alphamind:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   market:
     fetch-real-data: ${FETCH_REAL_DATA:false}
+  llm:
+    primary-provider: openai
+    fallback-providers:
+      - deepseek
+      - anthropic
+    timeout-seconds: 120
+  analysis:
+    max-history-recall: 5
+    confidence-threshold: 0.6
+    default-holding-days: 30
+  debate:
+    max-rounds: 3
+    voting-threshold: 0.5
+    confidence-weight: 0.4
+  sse:
+    heartbeat-interval-seconds: 30
+    reconnect-enabled: true
+  memory:
+    enabled: true
+    ttl-hours: 24
+    vector-dimensions: 1536
 
 spring:
   application:
@@ -48,6 +69,46 @@ spring:
       host: localhost
       port: 6379
       password: ${REDIS_PASSWORD:}
+      database: 0
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+
+  # Jackson Configuration
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+    default-property-inclusion: non_null
+
+  # Spring AI Configuration
+  ai:
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      chat:
+        options:
+          model: gpt-4o
+          temperature: 0.7
+          max-tokens: 4096
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY:}
+      base-url: https://api.deepseek.com
+      chat:
+        options:
+          model: deepseek-chat
+          temperature: 0.7
+          max-tokens: 4096
+    anthropic:
+      api-key: ${ANTHROPIC_API_KEY:}
+      base-url: https://api.anthropic.com
+      chat:
+        options:
+          model: claude-sonnet-4-20250514
+          temperature: 0.7
+          max-tokens: 4096
 
 # Spring Boot Actuator - 健康检查与运维端点
 management:
@@ -65,85 +126,6 @@ management:
       enabled: true
     db:
       enabled: true
-
-      database: 0
-      timeout: 5000ms
-      lettuce:
-        pool:
-          max-active: 8
-          max-idle: 8
-          min-idle: 0
-
-  # Jackson Configuration
-  jackson:
-    serialization:
-      write-dates-as-timestamps: false
-    default-property-inclusion: non_null
-
-# Spring AI Configuration
-spring.ai:
-  # OpenAI Configuration
-  openai:
-    api-key: ${OPENAI_API_KEY:}
-    base-url: ${OPENAI_BASE_URL:https://api.openai.com}
-    chat:
-      options:
-        model: gpt-4o
-        temperature: 0.7
-        max-tokens: 4096
-
-  # DeepSeek Configuration
-  deepseek:
-    api-key: ${DEEPSEEK_API_KEY:}
-    base-url: https://api.deepseek.com
-    chat:
-      options:
-        model: deepseek-chat
-        temperature: 0.7
-        max-tokens: 4096
-
-  # Anthropic Configuration (for Claude)
-  anthropic:
-    api-key: ${ANTHROPIC_API_KEY:}
-    base-url: https://api.anthropic.com
-    chat:
-      options:
-        model: claude-sonnet-4-20250514
-        temperature: 0.7
-        max-tokens: 4096
-
-# AlphaMind Application Configuration
-alphamind:
-  # LLM Provider Selection
-  llm:
-    primary-provider: openai
-    fallback-providers:
-      - deepseek
-      - anthropic
-    timeout-seconds: 120
-
-  # Analysis Configuration
-  analysis:
-    max-history-recall: 5
-    confidence-threshold: 0.6
-    default-holding-days: 30
-
-  # Debate Configuration
-  debate:
-    max-rounds: 3
-    voting-threshold: 0.5
-    confidence-weight: 0.4
-
-  # SSE Configuration
-  sse:
-    heartbeat-interval-seconds: 30
-    reconnect-enabled: true
-
-  # Memory Configuration
-  memory:
-    enabled: true
-    ttl-hours: 24
-    vector-dimensions: 1536
 
 # Logging
 logging:

@@ -82,9 +82,6 @@ public class PipelineOrchestrator {
                 report = debateOrchestrator.runDebate(report, eventConsumer);
             }
 
-            // Complete
-            emitComplete(eventConsumer);
-
             log.info("流水线分析完成: stockCode={}, signal={}",
                     stockCode, report.getTradeSignal().getType());
 
@@ -92,7 +89,6 @@ public class PipelineOrchestrator {
 
         } catch (Exception e) {
             log.error("流水线分析失败: stockCode={}", stockCode, e);
-            emitError(eventConsumer, e.getMessage());
             throw new RuntimeException("分析失败: " + e.getMessage(), e);
         } finally {
             // 确保无论成功还是异常，都释放所有 Agent 的 ThreadLocal，防止线程池泄漏
@@ -131,15 +127,4 @@ public class PipelineOrchestrator {
         }
     }
 
-    private void emitComplete(Consumer<SSEEvent> consumer) {
-        if (consumer != null) {
-            consumer.accept(SSEEvent.completeEvent());
-        }
-    }
-
-    private void emitError(Consumer<SSEEvent> consumer, String message) {
-        if (consumer != null) {
-            consumer.accept(SSEEvent.errorEvent(message));
-        }
-    }
 }

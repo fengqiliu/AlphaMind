@@ -61,12 +61,16 @@ export const getAnalysisHistory = async (
 
 export const createChatSession = async (
   stockCode: string,
-  strategy?: string,
+  stockName?: string,
 ): Promise<string> => {
   const params = new URLSearchParams({ stockCode });
-  if (strategy) params.append("strategy", strategy);
+  if (stockName) params.append("stockName", stockName);
   const { data } = await api.post(`/chat/session?${params}`);
   return data.data.sessionId;
+};
+
+export const clearChatSession = async (sessionId: string): Promise<void> => {
+  await api.delete(`/chat/session/${encodeURIComponent(sessionId)}`);
 };
 
 export const getChatMessages = async (

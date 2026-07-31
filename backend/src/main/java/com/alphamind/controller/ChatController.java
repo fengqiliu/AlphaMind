@@ -5,8 +5,10 @@ import com.alphamind.model.dto.*;
 import com.alphamind.model.entity.ChatMessageEntity;
 import com.alphamind.model.entity.ChatSessionEntity;
 import com.alphamind.model.enums.AgentType;
+import com.alphamind.repository.AnalysisReportRepository;
 import com.alphamind.repository.ChatMessageRepository;
 import com.alphamind.repository.ChatSessionRepository;
+import com.alphamind.service.AnalysisReportMapper;
 import com.alphamind.service.MemoryService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.constraints.NotBlank;
@@ -34,6 +36,8 @@ public class ChatController {
 
     private final MemoryService memoryService;
     private final ObjectMapper objectMapper;
+    private final AnalysisReportRepository analysisReportRepository;
+    private final AnalysisReportMapper analysisReportMapper;
     private final ChatSessionRepository chatSessionRepository;
     private final ChatMessageRepository chatMessageRepository;
     private final AgentRouter agentRouter;
@@ -272,9 +276,35 @@ public class ChatController {
     private void initializeAgentContext(BaseAgent agent, AgentContext context) {
         agent.clearContext();
         agent.setContext("sessionId", context.getSessionId());
-        agent.setContext("stockCode", context.getStockCode());
-        agent.setContext("stockName", context.getStockName());
+        setAgentContext(agent, "stockCode", context.getStockCode());
+        setAgentContext(agent, "stockName", context.getStockName());
+
+        String stockCode = context.getStockCode();
+        if (stockCode != null && !stockCode.isBlank()) {
+            try {
+                analysisReportRepository.findFirstByStockCodeOrderByCreatedAtDesc(stockCode)
+                        .map(analysisReportMapper::toDTO)
+                        .ifPresent(report -> {
+                            setAgentContext(agent, "analysisReport", report);
+                            setAgentContext(agent, "marketData", report.getMarketData());
+                            setAgentContext(agent, "technicalIndicators", report.getTechnicalIndicators());
+                            setAgentContext(agent, "sentimentData", report.getSentimentData());
+                            setAgentContext(agent, "tradeSignal", report.getTradeSignal());
+                            setAgentContext(agent, "confidence", report.getConfidence());
+                            setAgentContext(agent, "judgment", report.getJudgment());
+                        });
+            } catch (RuntimeException e) {
+                log.warn("加载最近分析报告失败，继续使用无报告上下文: stockCode={}", stockCode, e);
+            }
+        }
+
         agent.setContext("contextSummary", memoryService.getContextSummary(context.getSessionId(), 10));
+    }
+
+    private void setAgentContext(BaseAgent agent, String key, Object value) {
+        if (value != null) {
+            agent.setContext(key, value);
+        }
     }
 
     @lombok.Data

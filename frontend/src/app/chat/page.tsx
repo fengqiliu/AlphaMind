@@ -6,12 +6,13 @@ import { AgentMessage } from "@/components/agent/AgentMessage";
 import { AgentSelector } from "@/components/agent/AgentSelector";
 import { StockSearch } from "@/components/common/StockSearch";
 import { Button } from "@/components/common/Button";
-import { createChatSession } from "@/api/client";
+import { clearChatSession, createChatSession } from "@/api/client";
 import type { StockSearchResult } from "@/types";
 import { Send, Loader2, Trash2, Zap } from "lucide-react";
 
 export default function ChatPage() {
-  const [stockSelected, setStockSelected] = useState(false);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [isClearingSession, setIsClearingSession] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
 
   const {
@@ -23,18 +24,19 @@ export default function ChatPage() {
     error,
     sessionId,
     setSessionId,
+    setCurrentStockCode,
     setInputMessage,
     setSelectedAgent,
     setIsLoading,
     setLoadingMessage,
     setError,
     addMessage,
-    clearMessages,
     reset,
   } = useChatStore();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const stockSelected = Boolean(sessionId) || isCreatingSession;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -60,22 +62,33 @@ export default function ChatPage() {
   }, [inputMessage]);
 
   const handleStockSelect = async (stock: StockSearchResult) => {
+    eventSourceRef.current?.close();
+    eventSourceRef.current = null;
     reset();
-    setStockSelected(true);
+    setIsCreatingSession(true);
 
     try {
-      const sid = await createChatSession(stock.code);
+      const sid = await createChatSession(stock.code, stock.name);
+      setCurrentStockCode(stock.code);
       setSessionId(sid);
     } catch {
       setError("创建会话失败，请稍后重试");
+    } finally {
+      setIsCreatingSession(false);
     }
   };
 
   const handleSend = () => {
     if (!inputMessage.trim() || isLoading) return;
+    if (!sessionId) {
+      setError("会话尚未就绪，请重新选择股票");
+      return;
+    }
 
     const content = inputMessage.trim();
+    const sid = sessionId;
 
+    setError(null);
     addMessage({
       id: crypto.randomUUID(),
       role: "user",
@@ -91,15 +104,17 @@ export default function ChatPage() {
     // 关闭上一个连接
     eventSourceRef.current?.close();
 
-    const sid = sessionId || "default";
     const url = `/api/v1/chat/stream/${sid}?message=${encodeURIComponent(content)}&agentType=${selectedAgent}`;
     const es = new EventSource(url);
     eventSourceRef.current = es;
+    let settled = false;
 
     es.onmessage = (e: MessageEvent) => {
       try {
         const payload = JSON.parse(e.data);
-        if (payload.event === "message" && payload.data) {
+        if (payload.event === "thinking") {
+          setLoadingMessage(payload.message || "AI分析中...");
+        } else if (payload.event === "message" && payload.data) {
           addMessage({
             id: payload.data.id || crypto.randomUUID(),
             role: payload.data.role || "assistant",
@@ -108,12 +123,19 @@ export default function ChatPage() {
             agentName: payload.data.agentName,
             timestamp: payload.data.timestamp || new Date().toISOString(),
           });
-          setIsLoading(false);
-        } else if (payload.event === "error") {
-          setError(payload.message || "分析失败");
+          settled = true;
           setIsLoading(false);
           es.close();
-          eventSourceRef.current = null;
+          if (eventSourceRef.current === es) {
+            eventSourceRef.current = null;
+          }
+        } else if (payload.event === "error") {
+          settled = true;
+          setError(payload.message || "分析失败");
+          es.close();
+          if (eventSourceRef.current === es) {
+            eventSourceRef.current = null;
+          }
         }
       } catch {
         // ignore parse errors
@@ -121,11 +143,34 @@ export default function ChatPage() {
     };
 
     es.onerror = () => {
+      if (settled) return;
+      settled = true;
       setError("连接失败，请检查后端服务");
-      setIsLoading(false);
       es.close();
-      eventSourceRef.current = null;
+      if (eventSourceRef.current === es) {
+        eventSourceRef.current = null;
+      }
     };
+  };
+
+  const handleClearConversation = async () => {
+    if (!sessionId) {
+      reset();
+      return;
+    }
+
+    setIsClearingSession(true);
+    setError(null);
+    try {
+      await clearChatSession(sessionId);
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
+      reset();
+    } catch {
+      setError("清空会话失败，请稍后重试");
+    } finally {
+      setIsClearingSession(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -188,7 +233,7 @@ export default function ChatPage() {
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-[var(--bullish)] rounded-full pulse-live" />
                   <span className="text-xs text-[var(--text-muted)] font-mono">
-                    在线
+                    {sessionId ? "在线" : "连接中"}
                   </span>
                 </div>
               </div>
@@ -196,7 +241,8 @@ export default function ChatPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={clearMessages}
+              onClick={handleClearConversation}
+              disabled={isLoading || isCreatingSession || isClearingSession}
               className="text-[var(--text-muted)] hover:text-[var(--bearish)] hover:bg-[var(--bearish-glow)]"
             >
               <Trash2 className="w-4 h-4 mr-2" />
@@ -261,14 +307,24 @@ export default function ChatPage() {
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="输入消息... (使用 @Agent名称 指定特定Agent)"
+              placeholder={
+                sessionId
+                  ? "输入消息... (使用 @Agent名称 指定特定Agent)"
+                  : "正在创建会话..."
+              }
               className="flex-1 min-h-[48px] max-h-32 px-4 py-3 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border)] text-sm resize-none focus:outline-none focus:border-[var(--accent)] transition-colors font-mono"
               rows={1}
-              disabled={isLoading}
+              disabled={isLoading || !sessionId || isCreatingSession || isClearingSession}
             />
             <Button
               onClick={handleSend}
-              disabled={isLoading || !inputMessage.trim()}
+              disabled={
+                isLoading ||
+                !sessionId ||
+                !inputMessage.trim() ||
+                isCreatingSession ||
+                isClearingSession
+              }
               className="h-12 px-6 bg-gradient-to-r from-[var(--accent)] to-[#00ff88] text-[var(--bg-primary)] font-semibold btn-glow self-end"
             >
               {isLoading ? (

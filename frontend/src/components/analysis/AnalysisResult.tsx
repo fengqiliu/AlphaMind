@@ -54,10 +54,10 @@ export function AnalysisResult({
   const config = signalConfig[signal.type];
   const SignalIcon = config.icon;
 
-  const upPercent =
+  const targetPercent =
     ((signal.targetPrice - signal.entryPrice) / signal.entryPrice) * 100;
-  const downPercent =
-    (-(signal.entryPrice - signal.stopLoss) / signal.entryPrice) * 100;
+  const riskPercent =
+    Math.abs((signal.entryPrice - signal.stopLoss) / signal.entryPrice) * 100;
 
   return (
     <div className={cn("space-y-5", className)}>
@@ -117,10 +117,10 @@ export function AnalysisResult({
       <div className="flex items-center gap-4 p-4 bg-[var(--bg-tertiary)] rounded-xl">
         <div className="flex-1">
           <div className="text-[10px] text-[var(--text-muted)] font-mono mb-1">
-            上涨空间
+            目标空间
           </div>
           <div className="text-lg font-bold font-mono text-[var(--bullish)]">
-            +{upPercent.toFixed(2)}%
+            {targetPercent >= 0 ? "+" : ""}{targetPercent.toFixed(2)}%
           </div>
         </div>
         <div className="h-10 w-px bg-[var(--border)]" />
@@ -129,7 +129,7 @@ export function AnalysisResult({
             下跌风险
           </div>
           <div className="text-lg font-bold font-mono text-[var(--bearish)]">
-            -{downPercent.toFixed(2)}%
+            -{riskPercent.toFixed(2)}%
           </div>
         </div>
         <div className="h-10 w-px bg-[var(--border)]" />
@@ -138,7 +138,7 @@ export function AnalysisResult({
             盈亏比
           </div>
           <div className="text-lg font-bold font-mono text-[var(--accent)]">
-            {(upPercent / downPercent).toFixed(2)}:1
+            {riskPercent > 0 ? (Math.abs(targetPercent) / riskPercent).toFixed(2) : "--"}:1
           </div>
         </div>
       </div>

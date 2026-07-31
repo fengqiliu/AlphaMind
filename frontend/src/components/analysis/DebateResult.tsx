@@ -62,6 +62,10 @@ const signalConfig = {
 export function DebateResult({ judgment, debateViews, className }: DebateResultProps) {
   const position = positionConfig[judgment.finalPosition];
   const PositionIcon = position.icon;
+  const totalVotes = Math.max(
+    1,
+    Object.values(judgment.voteBreakdown).reduce((sum, votes) => sum + votes, 0),
+  );
 
   return (
     <div className={cn("space-y-5", className)}>
@@ -117,17 +121,17 @@ export function DebateResult({ judgment, debateViews, className }: DebateResultP
           <VoteBar
             position={DebatePosition.BULLISH}
             votes={judgment.voteBreakdown[DebatePosition.BULLISH] ?? 0}
-            total={10}
+            total={totalVotes}
           />
           <VoteBar
             position={DebatePosition.NEUTRAL}
             votes={judgment.voteBreakdown[DebatePosition.NEUTRAL] ?? 0}
-            total={10}
+            total={totalVotes}
           />
           <VoteBar
             position={DebatePosition.BEARISH}
             votes={judgment.voteBreakdown[DebatePosition.BEARISH] ?? 0}
-            total={10}
+            total={totalVotes}
           />
         </div>
       </div>

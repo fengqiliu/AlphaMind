@@ -148,9 +148,16 @@ public abstract class BaseAgent {
                 : null;
         if (effectiveSystem == null) effectiveSystem = systemPrompt;
 
+        String effectiveUserPrompt = userPrompt;
+        String contextSummary = getContext("contextSummary");
+        if (contextSummary != null && !contextSummary.isBlank()) {
+            effectiveUserPrompt = "【近期会话上下文】\n" + contextSummary
+                    + "\n\n【当前请求】\n" + userPrompt;
+        }
+
         // 优先使用 LlmManager（多模型 + 熔断）
         if (llmManager != null && llmManager.isAvailable()) {
-            String result = llmManager.call(effectiveSystem, userPrompt);
+            String result = llmManager.call(effectiveSystem, effectiveUserPrompt);
             if (result != null) return result;
         }
 
@@ -159,7 +166,7 @@ public abstract class BaseAgent {
             try {
                 return chatClient.prompt()
                         .system(effectiveSystem)
-                        .user(userPrompt)
+                        .user(effectiveUserPrompt)
                         .call()
                         .content();
             } catch (Exception e) {

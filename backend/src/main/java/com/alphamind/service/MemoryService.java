@@ -55,6 +55,8 @@ public class MemoryService {
             // Fallback to local memory
             localMemory.computeIfAbsent(sessionId, k -> new ArrayList<>()).add(message);
             log.warn("Redis unavailable, using local memory for session: {}", sessionId);
+        } finally {
+            invalidateSummary(sessionId);
         }
     }
 
@@ -111,10 +113,12 @@ public class MemoryService {
      */
     public void clearSession(String sessionId) {
         String key = SESSION_KEY_PREFIX + sessionId;
+        localMemory.remove(sessionId);
         try {
             redisTemplate.delete(key);
+            redisTemplate.delete(SUMMARY_KEY_PREFIX + sessionId);
         } catch (Exception e) {
-            localMemory.remove(sessionId);
+            log.debug("Redis 会话清理失败: sessionId={}", sessionId, e);
         }
     }
 
@@ -237,6 +241,15 @@ public class MemoryService {
             redisTemplate.opsForValue().set(key, summary, SUMMARY_TTL);
         } catch (Exception e) {
             log.debug("[MemoryService] 摘要缓存写入失败: {}", e.getMessage());
+        }
+    }
+
+    /** 新消息写入后让旧摘要失效，确保下一轮对话读取最新上下文。 */
+    private void invalidateSummary(String sessionId) {
+        try {
+            redisTemplate.delete(SUMMARY_KEY_PREFIX + sessionId);
+        } catch (Exception e) {
+            log.debug("[MemoryService] 摘要缓存失效失败: sessionId={}", sessionId, e);
         }
     }
 }

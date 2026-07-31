@@ -56,6 +56,7 @@ public class PortfolioAgent extends BaseAgent {
             }
 
             report.setTradeSignal(tradeSignal);
+            report.setFinalSignal(tradeSignal.getType());
             setContext("tradeSignal", tradeSignal);
 
             report.setConfidence(confidence);

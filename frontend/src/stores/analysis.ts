@@ -9,11 +9,14 @@ import type {
   SentimentData,
   Judgment,
   DebateView,
+  ConfidenceInterval,
 } from "@/types";
 
 interface AnalysisState {
   currentStockCode: string | null;
   currentStockName: string | null;
+  reportId: string | null;
+  reportCreatedAt: string | null;
   isAnalyzing: boolean;
   currentStage: string;
   loadingMessage: string;
@@ -21,6 +24,7 @@ interface AnalysisState {
   technicalIndicators: TechnicalIndicators | null;
   sentimentData: SentimentData | null;
   judgment: Judgment | null;
+  confidence: ConfidenceInterval | null;
   finalSignal: TradeSignal | null;
   debateViews: DebateView[] | null;
   error: string | null;
@@ -32,16 +36,21 @@ interface AnalysisState {
   setTechnicalIndicators: (data: TechnicalIndicators) => void;
   setSentimentData: (data: SentimentData) => void;
   setJudgment: (data: Judgment) => void;
+  setConfidence: (data: ConfidenceInterval) => void;
   setFinalSignal: (signal: TradeSignal) => void;
+  setReportMetadata: (id: string, createdAt: string) => void;
   setDebateViews: (views: DebateView[] | null) => void;
   setError: (error: string | null) => void;
   handleSSEEvent: (event: SSEEvent) => void;
+  clearResults: () => void;
   reset: () => void;
 }
 
 export const useAnalysisStore = create<AnalysisState>((set) => ({
   currentStockCode: null,
   currentStockName: null,
+  reportId: null,
+  reportCreatedAt: null,
   isAnalyzing: false,
   currentStage: "",
   loadingMessage: "",
@@ -49,12 +58,29 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
   technicalIndicators: null,
   sentimentData: null,
   judgment: null,
+  confidence: null,
   finalSignal: null,
   debateViews: null,
   error: null,
 
   setCurrentStock: (code, name) =>
-    set({ currentStockCode: code, currentStockName: name, error: null }),
+    set({
+      currentStockCode: code,
+      currentStockName: name,
+      reportId: null,
+      reportCreatedAt: null,
+      isAnalyzing: false,
+      currentStage: "",
+      loadingMessage: "",
+      marketData: null,
+      technicalIndicators: null,
+      sentimentData: null,
+      judgment: null,
+      confidence: null,
+      finalSignal: null,
+      debateViews: null,
+      error: null,
+    }),
 
   setIsAnalyzing: (analyzing) => set({ isAnalyzing: analyzing }),
 
@@ -69,7 +95,12 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
 
   setJudgment: (data) => set({ judgment: data }),
 
+  setConfidence: (data) => set({ confidence: data }),
+
   setFinalSignal: (signal) => set({ finalSignal: signal }),
+
+  setReportMetadata: (id, createdAt) =>
+    set({ reportId: id, reportCreatedAt: createdAt }),
 
   setDebateViews: (views) => set({ debateViews: views }),
 
@@ -115,10 +146,10 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
     }
   },
 
-  reset: () =>
+  clearResults: () =>
     set({
-      currentStockCode: null,
-      currentStockName: null,
+      reportId: null,
+      reportCreatedAt: null,
       isAnalyzing: false,
       currentStage: "",
       loadingMessage: "",
@@ -126,6 +157,26 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
       technicalIndicators: null,
       sentimentData: null,
       judgment: null,
+      confidence: null,
+      finalSignal: null,
+      debateViews: null,
+      error: null,
+    }),
+
+  reset: () =>
+    set({
+      currentStockCode: null,
+      currentStockName: null,
+      reportId: null,
+      reportCreatedAt: null,
+      isAnalyzing: false,
+      currentStage: "",
+      loadingMessage: "",
+      marketData: null,
+      technicalIndicators: null,
+      sentimentData: null,
+      judgment: null,
+      confidence: null,
       finalSignal: null,
       debateViews: null,
       error: null,

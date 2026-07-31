@@ -5,6 +5,7 @@ import com.alphamind.model.entity.AnalysisReportEntity;
 import com.alphamind.model.enums.AnalysisMode;
 import com.alphamind.model.enums.StrategyType;
 import com.alphamind.repository.AnalysisReportRepository;
+import com.alphamind.service.AnalysisReportMapper;
 import com.alphamind.service.PipelineOrchestrator;
 import com.alphamind.strategy.StrategyModeResolver;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -16,9 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
-import java.math.BigDecimal;
-import java.time.OffsetDateTime;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -34,6 +32,7 @@ public class AnalysisController {
     private final PipelineOrchestrator pipelineOrchestrator;
     private final ObjectMapper objectMapper;
     private final AnalysisReportRepository analysisReportRepository;
+    private final AnalysisReportMapper analysisReportMapper;
     private final StrategyModeResolver strategyModeResolver;
 
     private static final int MAX_HISTORY = 50;
@@ -75,17 +74,19 @@ public class AnalysisController {
                         }
                 );
 
-                // 发送最终结果
+                // 先持久化，再按 result → complete 的顺序结束 SSE，避免客户端提前断流
+                saveToHistory(report);
+
                 try {
                     String resultJson = objectMapper.writeValueAsString(
                             ApiResponse.success("分析完成", report));
                     emitter.next("event: result\ndata: " + resultJson + "\n\n");
+
+                    String completeJson = objectMapper.writeValueAsString(SSEEvent.completeEvent());
+                    emitter.next("event: complete\ndata: " + completeJson + "\n\n");
                 } catch (Exception e) {
                     log.error("序列化结果失败", e);
                 }
-
-                // 保存到历史记录
-                saveToHistory(report);
 
                 emitter.complete();
 
@@ -143,7 +144,7 @@ public class AnalysisController {
 
         List<AnalysisReportDTO> history = entities.stream()
                 .limit(Math.min(limit, MAX_HISTORY))
-                .map(this::toDTO)
+                .map(analysisReportMapper::toDTO)
                 .toList();
 
         return ApiResponse.success(history);
@@ -152,102 +153,11 @@ public class AnalysisController {
     private void saveToHistory(AnalysisReportDTO report) {
         if (report == null) return;
         try {
-            AnalysisReportEntity entity = toEntity(report);
+            AnalysisReportEntity entity = analysisReportMapper.toEntity(report);
             analysisReportRepository.save(entity);
         } catch (Exception e) {
             log.error("保存分析报告失败: id={}", report.getId(), e);
         }
-    }
-
-    private AnalysisReportEntity toEntity(AnalysisReportDTO dto) {
-        AnalysisReportEntity.AnalysisReportEntityBuilder builder = AnalysisReportEntity.builder()
-                .id(dto.getId())
-                .stockCode(dto.getStockCode())
-                .stockName(dto.getStockName() != null ? dto.getStockName() : dto.getStockCode())
-                .marketData(dto.getMarketData())
-                .technicalIndicators(dto.getTechnicalIndicators())
-                .sentimentData(dto.getSentimentData())
-                .judgment(dto.getJudgment());
-
-        if (dto.getFinalSignal() != null) {
-            builder.signalType(dto.getFinalSignal().name());
-        }
-        if (dto.getConfidence() != null) {
-            if (dto.getConfidence().getValue() != null) {
-                builder.confidenceValue(BigDecimal.valueOf(dto.getConfidence().getValue()));
-            }
-            if (dto.getConfidence().getLevel() != null) {
-                builder.confidenceLevel(dto.getConfidence().getLevel().name());
-            }
-        }
-        if (dto.getTradeSignal() != null) {
-            TradeSignalDTO ts = dto.getTradeSignal();
-            if (ts.getType() != null) builder.signalType(ts.getType().name());
-            if (ts.getEntryPrice() != null) builder.entryPrice(BigDecimal.valueOf(ts.getEntryPrice()));
-            if (ts.getTargetPrice() != null) builder.targetPrice(BigDecimal.valueOf(ts.getTargetPrice()));
-            if (ts.getStopLoss() != null) builder.stopLoss(BigDecimal.valueOf(ts.getStopLoss()));
-            builder.holdingDays(ts.getHoldingPeriodDays());
-            builder.rationale(ts.getRationale());
-        }
-        if (dto.getCreatedAt() != null) {
-            builder.createdAt(dto.getCreatedAt().atZone(ZoneId.systemDefault()).toOffsetDateTime());
-        }
-        return builder.build();
-    }
-
-    private AnalysisReportDTO toDTO(AnalysisReportEntity entity) {
-        AnalysisReportDTO dto = new AnalysisReportDTO();
-        dto.setId(entity.getId());
-        dto.setStockCode(entity.getStockCode());
-        dto.setStockName(entity.getStockName());
-
-        // 还原 jsonb 字段
-        if (entity.getMarketData() != null) {
-            dto.setMarketData(objectMapper.convertValue(entity.getMarketData(), MarketDataDTO.class));
-        }
-        if (entity.getTechnicalIndicators() != null) {
-            dto.setTechnicalIndicators(objectMapper.convertValue(entity.getTechnicalIndicators(), TechnicalIndicatorsDTO.class));
-        }
-        if (entity.getSentimentData() != null) {
-            dto.setSentimentData(objectMapper.convertValue(entity.getSentimentData(), SentimentDataDTO.class));
-        }
-        if (entity.getJudgment() != null) {
-            dto.setJudgment(objectMapper.convertValue(entity.getJudgment(), JudgmentDTO.class));
-        }
-
-        // 还原交易信号
-        if (entity.getEntryPrice() != null || entity.getTargetPrice() != null) {
-            TradeSignalDTO ts = new TradeSignalDTO();
-            if (entity.getSignalType() != null) {
-                try { ts.setType(com.alphamind.model.enums.SignalType.valueOf(entity.getSignalType())); } catch (Exception ignored) {}
-            }
-            if (entity.getEntryPrice() != null) ts.setEntryPrice(entity.getEntryPrice().doubleValue());
-            if (entity.getTargetPrice() != null) ts.setTargetPrice(entity.getTargetPrice().doubleValue());
-            if (entity.getStopLoss() != null) ts.setStopLoss(entity.getStopLoss().doubleValue());
-            if (entity.getHoldingDays() != null) ts.setHoldingPeriodDays(entity.getHoldingDays());
-            ts.setRationale(entity.getRationale());
-            dto.setTradeSignal(ts);
-        }
-
-        // 还原 finalSignal 枚举
-        if (entity.getSignalType() != null) {
-            try { dto.setFinalSignal(com.alphamind.model.enums.SignalType.valueOf(entity.getSignalType())); } catch (Exception ignored) {}
-        }
-
-        // 还原置信度
-        if (entity.getConfidenceValue() != null || entity.getConfidenceLevel() != null) {
-            ConfidenceDTO confidence = new ConfidenceDTO();
-            if (entity.getConfidenceValue() != null) confidence.setValue(entity.getConfidenceValue().doubleValue());
-            if (entity.getConfidenceLevel() != null) {
-                try { confidence.setLevel(com.alphamind.model.enums.ConfidenceLevel.valueOf(entity.getConfidenceLevel())); } catch (Exception ignored) {}
-            }
-            dto.setConfidence(confidence);
-        }
-
-        if (entity.getCreatedAt() != null) {
-            dto.setCreatedAt(entity.getCreatedAt().toLocalDateTime());
-        }
-        return dto;
     }
 
     /**

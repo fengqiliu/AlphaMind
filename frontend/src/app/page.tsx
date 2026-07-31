@@ -22,7 +22,6 @@ import {
   AnalysisMode,
   StrategyType as ST,
   ConfidenceLevel,
-  DebatePosition,
 } from "@/types";
 import { formatDate } from "@/utils";
 import { downloadReportJson, downloadReportMarkdown } from "@/utils/reportExport";
@@ -86,6 +85,8 @@ export default function AnalysisPage() {
   const {
     currentStockCode,
     currentStockName,
+    reportId,
+    reportCreatedAt,
     isAnalyzing,
     currentStage,
     loadingMessage,
@@ -93,6 +94,7 @@ export default function AnalysisPage() {
     technicalIndicators,
     sentimentData,
     judgment,
+    confidence,
     finalSignal,
     error,
     setCurrentStock,
@@ -102,46 +104,56 @@ export default function AnalysisPage() {
     setTechnicalIndicators,
     setSentimentData,
     setJudgment,
+    setConfidence,
     setFinalSignal,
+    setReportMetadata,
     setError,
-    reset,
+    clearResults,
     handleSSEEvent,
     debateViews,
     setDebateViews,
   } = useAnalysisStore();
 
   const handleStockSelect = (stock: StockSearchResult) => {
+    disconnectSSE();
     setCurrentStock(stock.code, stock.name);
   };
 
   const handleWeeklyPickSelect = (pick: WeeklyStockRecommendation) => {
+    disconnectSSE();
     setCurrentStock(pick.stockCode, pick.stockName);
   };
 
   const handleStartAnalysis = () => {
     if (!currentStockCode) return;
 
-    reset();
+    clearResults();
     setIsAnalyzing(true);
     setCurrentStage("START", "正在连接分析服务...");
 
-    const url = `/api/v1/analysis/stream?stockCode=${encodeURIComponent(currentStockCode)}&strategy=${strategy}&mode=${analysisMode}`;
+    const params = new URLSearchParams({
+      stockCode: currentStockCode,
+      stockName: currentStockName || currentStockCode,
+      strategy,
+      mode: analysisMode,
+    });
+    const url = `/api/v1/analysis/stream?${params.toString()}`;
 
     const es = connectSSE(url, {
       onMessage: (eventType, data) => {
         const payload = data as Record<string, unknown>;
         if (eventType === "result") {
-          const report = (payload?.data ?? payload) as Record<string, unknown>;
+          const report = (payload?.data ?? payload) as AnalysisReport;
           if (report) {
-            if (report.marketData) setMarketData(report.marketData as Parameters<typeof setMarketData>[0]);
-            if (report.technicalIndicators) setTechnicalIndicators(report.technicalIndicators as Parameters<typeof setTechnicalIndicators>[0]);
-            if (report.sentimentData) setSentimentData(report.sentimentData as Parameters<typeof setSentimentData>[0]);
-            if (report.tradeSignal) setFinalSignal(report.tradeSignal as Parameters<typeof setFinalSignal>[0]);
-            if (report.judgment) setJudgment(report.judgment as Parameters<typeof setJudgment>[0]);
-            setDebateViews((report.debateViews as Parameters<typeof setDebateViews>[0]) ?? null);
+            if (report.id && report.createdAt) setReportMetadata(report.id, report.createdAt);
+            if (report.marketData) setMarketData(report.marketData);
+            if (report.technicalIndicators) setTechnicalIndicators(report.technicalIndicators);
+            if (report.sentimentData) setSentimentData(report.sentimentData);
+            if (report.tradeSignal) setFinalSignal(report.tradeSignal);
+            if (report.confidence) setConfidence(report.confidence);
+            if (report.judgment) setJudgment(report.judgment);
+            setDebateViews(report.debateViews ?? null);
           }
-          setIsAnalyzing(false);
-          disconnectSSE();
         } else if (eventType === "complete") {
           setIsAnalyzing(false);
           disconnectSSE();
@@ -164,13 +176,14 @@ export default function AnalysisPage() {
   const handleStopAnalysis = () => {
     disconnectSSE();
     eventSourceRef.current = null;
-    reset();
-    setIsAnalyzing(false);
+    clearResults();
   };
 
   const isPositive = (marketData?.changePercent || 0) >= 0;
 
   const exportableReport: AnalysisReport | null =
+    reportId &&
+    reportCreatedAt &&
     currentStockCode &&
     currentStockName &&
     marketData &&
@@ -178,12 +191,12 @@ export default function AnalysisPage() {
     sentimentData &&
     finalSignal
       ? {
-          id: crypto.randomUUID(),
+          id: reportId,
           stockCode: currentStockCode,
           stockName: currentStockName,
           finalSignal: finalSignal.type,
           confidence:
-            judgment?.confidence || {
+            confidence || judgment?.confidence || {
               value: 0.65,
               level: ConfidenceLevel.MEDIUM,
             },
@@ -191,23 +204,9 @@ export default function AnalysisPage() {
           marketData,
           technicalIndicators,
           sentimentData,
-          judgment: judgment || {
-            finalPosition: DebatePosition.NEUTRAL,
-            confidence: {
-              value: 0.65,
-              level: ConfidenceLevel.MEDIUM,
-            },
-            reasoning: "未启用辩论模式，使用流水线综合结论。",
-            voteBreakdown: {
-              [DebatePosition.BULLISH]: 0,
-              [DebatePosition.BEARISH]: 0,
-              [DebatePosition.NEUTRAL]: 1,
-            },
-            riskWarnings: [],
-            finalSignal,
-          },
+          judgment: judgment ?? undefined,
           debateViews: debateViews ?? undefined,
-          createdAt: new Date().toISOString(),
+          createdAt: reportCreatedAt,
         }
       : null;
 
@@ -520,10 +519,10 @@ export default function AnalysisPage() {
                   dates: marketData.klineDates,
                   klines: marketData.klines,
                   volumes: marketData.klineVolumes || [],
-                  ma5: (marketData.ma5 || []).map((v) => v ?? 0),
-                  ma10: (marketData.ma10 || []).map((v) => v ?? 0),
-                  ma20: (marketData.ma20 || []).map((v) => v ?? 0),
-                  ma60: (marketData.ma60 || []).map((v) => v ?? 0),
+                  ma5: marketData.ma5 || [],
+                  ma10: marketData.ma10 || [],
+                  ma20: marketData.ma20 || [],
+                  ma60: marketData.ma60 || [],
                 }}
                 className="h-[400px]"
               />
@@ -584,7 +583,7 @@ export default function AnalysisPage() {
           <AnalysisResult
             signal={finalSignal}
             confidence={
-              judgment?.confidence || { value: 0.65, level: ConfidenceLevel.MEDIUM }
+              confidence || judgment?.confidence || { value: 0.65, level: ConfidenceLevel.MEDIUM }
             }
           />
         </div>

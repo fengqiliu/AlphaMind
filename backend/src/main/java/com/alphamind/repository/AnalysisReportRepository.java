@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface AnalysisReportRepository extends JpaRepository<AnalysisReportEntity, String> {
@@ -17,6 +18,8 @@ public interface AnalysisReportRepository extends JpaRepository<AnalysisReportEn
     List<AnalysisReportEntity> findTop50ByOrderByCreatedAtDesc();
 
     List<AnalysisReportEntity> findByStockCodeOrderByCreatedAtDesc(String stockCode);
+
+    Optional<AnalysisReportEntity> findFirstByStockCodeOrderByCreatedAtDesc(String stockCode);
 
     Page<AnalysisReportEntity> findByStockCode(String stockCode, Pageable pageable);
 
