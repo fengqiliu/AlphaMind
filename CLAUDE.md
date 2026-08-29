@@ -95,7 +95,9 @@ The `BaseAgent.llmCall()` follows a fallback chain: `LlmManager` (multi-model) �
 **Agent System** (`backend/src/main/java/com/alphamind/agent/`):
 
 - `BaseAgent.java` - Abstract base class defining the agent contract
-- `MarketAgent.java` - Fetches market/price data
+- `MarketAgent.java` - Maps provider-originated market snapshots into analysis data
+- `market/provider/` - Sina quote and Eastmoney daily-K adapters; providers never synthesize data
+- `market/service/` - Provider composition, Redis/local cache, stale-cache fallback, and explicit failure
 - `TechnicalAgent.java` - Performs technical analysis (indicators, patterns)
 - `SentimentAgent.java` - Analyzes news/sentiment data
 - `PortfolioAgent.java` - Generates investment recommendations
@@ -178,5 +180,6 @@ GET  /api/v1/chat/stream/{sessionId}?message={msg}&agentType=PORTFOLIO
 - Before modifying frontend code, read `frontend/AGENTS.md` and `frontend/CLAUDE.md` — Next.js 16 has breaking changes from earlier versions
 - Backend has test infrastructure configured but no committed test classes (`mvn test` is mainly a compile and Surefire baseline check)
 - Redis is optional; `MemoryService` falls back to local in-memory storage when Redis is unavailable
+- Market data follows fresh cache → real providers → explicitly stale cache → failure; never add an unlabelled random/static fallback
 - Local backend development uses `dev` Spring profile — `application-dev.yml` disables production DB auto-configuration
 - Analysis history uses in-memory deque (most recent 50); chat history uses Redis with in-memory fallback

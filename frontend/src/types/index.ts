@@ -115,10 +115,15 @@ export interface MarketData {
   volume: number;
   amount: number;
   turnoverRate: number;
-  pe: number;
-  pb: number;
-  marketCap: number;
+  pe: number | null;
+  pb: number | null;
+  marketCap: number | null;
   updateTime: string;
+  dataSource?: string;
+  dataStatus?: "LIVE" | "FRESH_CACHE" | "STALE_CACHE";
+  stale?: boolean;
+  cacheAgeSeconds?: number;
+  dataWarning?: string;
   // K线数据
   klineDates?: string[];
   klines?: [number, number, number, number][]; // [open, close, low, high]

@@ -27,6 +27,16 @@ public class MarketDataDTO {
     private Double pb;
     private Long marketCap;
     private String updateTime;
+    /** 实际行情来源，例如 SINA+EASTMONEY；不允许用笼统的“实时”掩盖来源。 */
+    private String dataSource;
+    /** LIVE、FRESH_CACHE 或 STALE_CACHE。 */
+    private String dataStatus;
+    /** 是否已超过新鲜缓存窗口。 */
+    private Boolean stale;
+    /** 返回时相对抓取时间的缓存年龄，实时抓取为 0。 */
+    private Long cacheAgeSeconds;
+    /** 降级、数据缺口或模拟数据提示。 */
+    private String dataWarning;
     // LLM生成的行情摘要
     private String aiSummary;
     // K线数据

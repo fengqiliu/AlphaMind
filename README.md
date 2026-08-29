@@ -1,6 +1,6 @@
 # AlphaMind - 多 Agent 智能股票分析系统
 
-> 基于 Spring Boot、Spring AI 与 Next.js 的股票分析系统。通过流水线 Agent 协作 + 多空辩论仲裁，为单只股票提供结构化分析结果，前后端全程真实 API 对接，无 mock 数据。
+> 基于 Spring Boot、Spring AI 与 Next.js 的股票分析系统。通过流水线 Agent 协作 + 多空辩论仲裁，为单只股票提供结构化分析结果；行情分析链路只接受带来源的真实 Provider 数据或明确标记的最后成功缓存。
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Java](https://img.shields.io/badge/Java-17-green.svg)
@@ -14,7 +14,7 @@
 
 AlphaMind 由一组专职 Agent 共同完成股票分析：
 
-- `MarketAgent`：通过新浪财经实时接口拉取行情数据，生成含均线的 K 线序列
+- `MarketAgent`：组合新浪实时报价与东方财富前复权日 K 线，并计算均线
 - `TechnicalAgent`：采用真实公式计算 EMA / RSI / KDJ / 布林带等技术指标
 - `SentimentAgent`：基于行情指标（涨跌幅、PE、换手率、量比）进行加权舆情评分
 - `PortfolioAgent`：整合前置结果，生成交易建议与仓位控制方案
@@ -30,7 +30,7 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 
 - SSE 实时推送分析进度与各阶段数据
 - 每周推荐 3 支“低位 + 价值”兼顾的重点观察股票，可一键带入分析
-- 新浪财经实时行情接入，可通过配置开关切换
+- 真实行情 Provider 链，支持 Redis/本地新鲜缓存和带告警的过期缓存降级
 - LLM 可选接入；未配置 API Key 时自动降级为模板响应
 - 分析历史持久化（PostgreSQL jsonb），支持完整反序列化还原
 - 会话记忆（Redis，不可用时自动降级本地内存）
@@ -39,12 +39,13 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 
 ## 当前状态
 
-截至 2026-05-05，以下能力已完成并验证：
+截至 2026-08-30，以下能力已完成并验证：
 
 - 后端在 **Java 17** 环境下编译 0 错误
 - 后端通过 `dev` profile 启动，无需本地 MySQL 即可开发（使用 PostgreSQL dev 库）
 - 前端 Next.js build 5 条路由全部构建通过，0 TypeScript 错误
-- `MarketAgent` 已接入新浪财经实时接口，K 线锚定真实现价
+- `MarketAgent` 已拆分真实 Provider：新浪实时报价 + 东方财富前复权日 K
+- 行情读取按“新鲜缓存 → 真实 Provider → 过期缓存 → 明确失败”执行，不再生成随机 K 线
 - `TechnicalAgent` 使用真实 EMA/RSI/KDJ/布林带公式，非随机数
 - `SentimentAgent` 使用确定性加权评分（涨跌幅 40%、PE 25%、换手率 20%、量比 15%）
 - 分析历史 `toDTO()` 完整还原所有 jsonb 字段及标量字段
@@ -71,7 +72,7 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 | 数据库 | PostgreSQL（含 jsonb 字段）+ Flyway |
 | 缓存 | Redis（可选，不可用时降级本地内存） |
 | LLM Provider | OpenAI / DeepSeek / Anthropic |
-| 行情数据 | 新浪财经实时接口（`alphamind.market.fetch-real-data` 开关控制） |
+| 行情数据 | 新浪实时报价 + 东方财富前复权日 K；Redis/本地两级缓存 |
 
 ### 前端
 
@@ -151,8 +152,10 @@ REDIS_PASSWORD=
 # CORS（默认 http://localhost:3000）
 CORS_ALLOWED_ORIGINS=http://localhost:3000
 
-# 是否拉取新浪财经真实行情（默认 false，dev profile 默认 true）
+# 是否允许调用真实行情 Provider（默认 true；false 时不会生成模拟行情）
 FETCH_REAL_DATA=true
+MARKET_CACHE_FRESH_TTL_SECONDS=30
+MARKET_CACHE_STALE_MAX_AGE_SECONDS=86400
 ```
 
 ---
@@ -171,7 +174,7 @@ SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run
 `dev` profile 特点：
 
 - 使用 PostgreSQL `localhost:5432/alphamind_dev`（需提前建库）
-- 启用真实新浪财经行情接口（`alphamind.market.fetch-real-data: true`）
+- 启用真实行情 Provider 链（`alphamind.market.fetch-real-data: true`）
 - Redis 不可用时自动降级本地内存
 - 无 LLM Key 时使用模板输出，流程依然走通
 
@@ -394,7 +397,7 @@ GET /api/v1/stocks/recommendations/weekly
 
 ### 切换行情数据源
 
-目前 `MarketAgent` 支持新浪财经实时接口。`dev` profile 默认开启：
+目前 `MarketAgent` 使用新浪实时报价与东方财富前复权日 K 线。默认开启：
 
 ```yaml
 alphamind:
@@ -402,13 +405,14 @@ alphamind:
     fetch-real-data: true
 ```
 
-生产环境可通过环境变量 `FETCH_REAL_DATA=true` 开启，或在 `application.yml` 中修改默认值。
+`FETCH_REAL_DATA=false` 会禁止外部行情读取；系统只可能返回仍在允许年龄内的最后成功缓存，否则明确失败。缓存窗口由 `MARKET_CACHE_FRESH_TTL_SECONDS` 和 `MARKET_CACHE_STALE_MAX_AGE_SECONDS` 控制。
 
 ### 已知限制
 
 - 聊天历史依赖 Redis；Redis 不可用时，重启后会话内存清空
 - 当前股票搜索为本地静态匹配，未接入外部股票元数据库
-- 新浪财经接口为非官方公开数据，如失败会降级为合成数据
+- 新浪、东方财富均为公网行情接口，不提供生产 SLA；实时源失败时仅允许降级到带来源、年龄和告警的最后成功缓存
+- 当前 Provider 未返回 PE、PB 和总市值，这些字段保持为空，不参与估值结论
 
 ---
 

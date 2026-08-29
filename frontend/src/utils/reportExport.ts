@@ -61,6 +61,8 @@ export function reportToMarkdown(report: AnalysisReport): string {
     `- 涨跌幅：${report.marketData.changePercent.toFixed(2)}%`,
     `- 成交量：${report.marketData.volume.toFixed(2)}`,
     `- 换手率：${report.marketData.turnoverRate.toFixed(2)}%`,
+    `- 数据来源：${report.marketData.dataSource || "未标明"}`,
+    `- 数据状态：${report.marketData.dataStatus || "未标明"}`,
     "",
     "## 技术面",
     "",

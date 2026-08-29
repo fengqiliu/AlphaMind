@@ -402,10 +402,35 @@ export default function AnalysisPage() {
               <span className="w-1.5 h-5 bg-[var(--accent)] rounded-full" />
               市场行情
             </h2>
-            <span className="text-xs text-[var(--text-muted)] font-mono">
-              {formatDate(marketData.updateTime)}
-            </span>
+            <div className="flex items-center gap-2 text-xs font-mono">
+              {marketData.dataStatus && (
+                <span
+                  className={
+                    marketData.stale
+                      ? "text-[var(--neutral)]"
+                      : "text-[var(--bullish)]"
+                  }
+                >
+                  {marketData.dataStatus === "LIVE"
+                    ? "实时数据"
+                    : marketData.dataStatus === "FRESH_CACHE"
+                      ? "新鲜缓存"
+                      : marketData.dataStatus === "STALE_CACHE"
+                        ? "过期缓存"
+                        : "未知状态"}
+                  {marketData.dataSource ? ` · ${marketData.dataSource}` : ""}
+                </span>
+              )}
+              <span className="text-[var(--text-muted)]">
+                {formatDate(marketData.updateTime)}
+              </span>
+            </div>
           </div>
+          {marketData.dataWarning && (
+            <div className="mb-4 rounded-lg border border-[var(--neutral)]/30 bg-[var(--neutral)]/10 px-3 py-2 text-xs text-[var(--neutral)]">
+              {marketData.dataWarning}
+            </div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <MarketStat label="当前价" value={marketData.currentPrice} />
             <MarketStat
@@ -431,7 +456,7 @@ export default function AnalysisPage() {
             />
             <MarketStat label="市盈率" value={marketData.pe} />
             <MarketStat label="市净率" value={marketData.pb} />
-            <MarketStat label="52周高" value={marketData.high} />
+            <MarketStat label="当日最高" value={marketData.high} />
           </div>
         </div>
       )}
@@ -610,11 +635,12 @@ function MarketStat({
   color,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   format?: "percent" | "amount" | "marketCap";
   color?: boolean;
 }) {
   const formatValue = () => {
+    if (value == null) return "未提供";
     if (format === "percent")
       return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
     if (format === "amount")
@@ -629,7 +655,7 @@ function MarketStat({
   };
 
   const getColorClass = () => {
-    if (!color) return "text-[var(--text-primary)]";
+    if (!color || value == null) return "text-[var(--text-primary)]";
     return value >= 0 ? "text-[var(--bullish)]" : "text-[var(--bearish)]";
   };
 
