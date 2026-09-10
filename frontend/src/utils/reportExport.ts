@@ -191,9 +191,9 @@ function buildReportHtml(report: AnalysisReport): string {
     { label: "涨跌幅", value: `${changeSign}${m.changePercent.toFixed(2)}%`, color: changeColor },
     { label: "成交量（手）", value: m.volume.toFixed(0) },
     { label: "换手率", value: `${m.turnoverRate.toFixed(2)}%` },
-    { label: "市值（亿）", value: (m.marketCap / 1e8).toFixed(2) },
-    { label: "市盈率", value: m.pe.toFixed(2) },
-    { label: "市净率", value: m.pb.toFixed(2) },
+    { label: "市值（亿）", value: m.marketCap === null ? "数据源未提供" : (m.marketCap / 1e8).toFixed(2) },
+    { label: "市盈率", value: m.pe === null ? "数据源未提供" : m.pe.toFixed(2) },
+    { label: "市净率", value: m.pb === null ? "数据源未提供" : m.pb.toFixed(2) },
     { label: "52周高", value: `¥${m.high.toFixed(2)}` },
   ]
     .map(
