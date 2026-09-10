@@ -18,9 +18,10 @@
       "Skill(commit-commands:commit-push-pr)",
       "Bash(git branch *)",
       "Bash(git hash-object *)",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(git pull *)"
     ]
   },
-  "outputStyle": "Concise",
+  "outputStyle": "Explanatory",
   "prefersReducedMotion": true
 }

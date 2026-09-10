@@ -138,7 +138,7 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
         break;
       }
       case "complete":
-        set({ isAnalyzing: false, currentStage: "COMPLETE" });
+        set({ loadingMessage: "分析阶段已完成，正在接收完整报告..." });
         break;
       case "error":
         set({ error: event.message || "分析失败", isAnalyzing: false });

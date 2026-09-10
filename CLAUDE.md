@@ -4,43 +4,47 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AlphaMind is a multi-agent intelligent stock analysis system using Spring AI and Next.js. It provides stock analysis through a pipeline of specialized agents (Market → Technical → Sentiment → Portfolio) and a debate mode where Bull/Bear/Neutral agents argue their positions before an Arbitrator makes a final decision.
+AlphaMind is a multi-agent stock analysis system (Spring Boot 3.4 + Spring AI backend, Next.js 16 frontend). A four-stage agent pipeline (Market → Technical → Sentiment → Portfolio) produces an `AnalysisReportDTO`; in DEBATE mode a fifth stage adds Bull/Bear/Neutral advocates and an Arbitrator. All domain text and user-facing copy is Chinese.
 
 ## Build & Run Commands
 
-### Frontend (Next.js 16)
+### Backend (Spring Boot 3.4, Java 17, Maven)
+
+```bash
+cd backend
+SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run   # http://localhost:8080
+mvn clean package
+mvn test
+```
+
+Single test:
+
+```bash
+mvn -Dtest=StrategyModeResolverTest test
+mvn -Dtest=StrategyModeResolverTest#shouldUseExplicitModeWhenProvided test
+```
+
+Backend tests are plain JUnit 5 with no Spring context, no DB, and no network — `mvn test` runs fully offline. Committed suites cover `strategy/`, `market/`, `service/`, and `agent/`.
+
+### Frontend (Next.js 16.2, React 19, Tailwind v4)
 
 ```bash
 cd frontend
 npm install
-npm run dev      # Development server on http://localhost:3000
-npm run build    # Production build
-npm run lint     # ESLint check
+npm run dev      # http://localhost:3000
+npm run build
+npm run lint     # bare `eslint`
 ```
 
-> There is no frontend test runner configured.
+There is no `typecheck` script and no frontend test runner; `npm run build` is the type-check gate.
 
-### Backend (Spring Boot 3.4)
-
-```bash
-cd backend
-SPRING_PROFILES_ACTIVE=dev mvn spring-boot:run   # Runs on http://localhost:8080
-mvn clean package     # Build JAR
-mvn test              # Run tests
-```
-
-Single-test syntax:
-
-```bash
-mvn -Dtest=ClassName test
-mvn -Dtest=ClassName#methodName test
-```
-
-### E2E Tests
+### E2E (Playwright)
 
 ```bash
 cd e2e && npx playwright test
 ```
+
+`playwright.config.ts` auto-starts the **frontend** dev server (`reuseExistingServer` when not CI), but not the backend — start the backend yourself for any test that hits `/api/v1`.
 
 ### Docker Compose
 
@@ -48,138 +52,103 @@ cd e2e && npx playwright test
 docker compose up -d --build
 ```
 
-Services: frontend (3000), backend (8080), PostgreSQL (5432), Redis (6379)
+Services: frontend (3000), backend (8080), PostgreSQL (5432), Redis (6379). Copy `.env.example` → `.env` first.
 
-### Environment Variables
+## Local Environment Requirements
 
-```bash
-# Required for LLM functionality
-OPENAI_API_KEY=<key>
-DEEPSEEK_API_KEY=<key>   # Recommended
+**The `dev` profile does not disable the database.** `application-dev.yml` points at PostgreSQL `localhost:5432/alphamind_dev` with `ddl-auto: validate` and Flyway enabled — create that database before starting, or the app fails on boot. Schema lives in `backend/src/main/resources/db/migration/V1__init_schema.sql`; add migrations there rather than relying on Hibernate DDL.
 
-# Optional
-ANTHROPIC_API_KEY=<key>
-DB_PASSWORD=<password>   # Only for production
-REDIS_PASSWORD=<password>
-```
+Redis is genuinely optional: `MemoryService` catches every Redis exception and falls back to a `ConcurrentHashMap` (chat history is then lost on restart).
+
+LLM keys are optional too — with no key, agents fall through to deterministic template output and the whole flow still completes. Recommended key: `DEEPSEEK_API_KEY`. Also read: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DB_USERNAME`/`DB_PASSWORD`, `REDIS_PASSWORD`, `CORS_ALLOWED_ORIGINS`, `FETCH_REAL_DATA`, `MARKET_CACHE_FRESH_TTL_SECONDS`, `MARKET_CACHE_STALE_MAX_AGE_SECONDS`, `MARKET_HISTORY_DAYS`, and `BACKEND_API_ORIGIN` (frontend rewrite target).
 
 ## Architecture
 
-### Strategy System
+### Orchestration: DEBATE is pipeline *plus* a stage, not an alternative
 
-The strategy system uses a layered configuration with `StrategyType` enums (`CONSERVATIVE`/`BALANCED`/`AGGRESSIVE`) and `StrategyProfile` implementations:
+`PipelineOrchestrator.execute()` always runs stages 1–4. When the resolved mode is `DEBATE` it then delegates stage 5 to `DebateOrchestrator.runDebate()` (Bull → Bear → Neutral → Arbitrator, sequential by design because agents are singletons with mutable per-thread context). Both orchestrators call `clearContext()` on every agent they touch in a `finally` block.
 
-- **Position ratios**: CONSERVATIVE=30%, BALANCED=50%, AGGRESSIVE=80%
-- **Stop loss**: CONSERVATIVE=5%, BALANCED=7%, AGGRESSIVE=10%
-- **Holding periods**: CONSERVATIVE=45 days, BALANCED=30 days, AGGRESSIVE=15 days
-- **Default modes**: AGGRESSIVE→PIPELINE, others→DEBATE (via `StrategyProfile.getDefaultMode()`)
+Do not treat `PIPELINE` and `DEBATE` as two separate code paths — they share stages 1–4 entirely.
 
-### AnalysisMode and Mode Resolution
+### Mode resolution
 
-`AnalysisMode` enum has two values: `PIPELINE` and `DEBATE`. Mode resolution follows this priority:
+`StrategyModeResolver.resolve(mode, enableDebate, strategy)` applies priority: explicit `mode` → legacy `enableDebate` boolean → strategy default. `AnalysisController` has two `resolveMode` overloads (String and enum) because the SSE endpoint takes `mode` as a raw query string parsed via `AnalysisMode.fromValue`.
 
-1. `mode` parameter if provided (e.g., `?mode=PIPELINE`)
-2. `enableDebate` boolean (legacy compatibility): `true`→DEBATE, `false`→PIPELINE
-3. Strategy default from `StrategyModeResolver.resolve(mode, enableDebate, strategy)`
+### Strategy layer (`strategy/`)
 
-The `StrategyModeResolver` (`backend/src/main/java/com/alphamind/strategy/`) handles the priority logic. AGGRESSIVE strategy defaults to PIPELINE; CONSERVATIVE and BALANCED default to DEBATE.
+`StrategyType` enum + one `StrategyProfile` bean per type, looked up through `StrategyRegistry`:
 
-### Agent Context and Thread Safety
+| Strategy | Position | Stop loss | Holding | Default mode |
+|---|---|---|---|---|
+| CONSERVATIVE | 30% | 5% | 45d | DEBATE |
+| BALANCED | 50% | 7% | 30d | DEBATE |
+| AGGRESSIVE | 80% | 10% | 15d | PIPELINE |
 
-All agents share state via `ThreadLocal<Map<String,Object>>`. **Always call `clearContext()` after every request** to prevent thread-pool leaks. Common context keys: `stockCode`, `stockName`, `strategy`, `marketData`, `technicalIndicators`, `sentimentData`, `tradeSignal`, `confidence`, `sessionId`, `contextSummary`.
+`StrategySignalPlanner.plan()` turns scores into a `TradeSignalDTO`: composite = `technicalScore * 0.5 + sentimentScore * 50 * 0.5`; ≥70 BUY, ≥50 HOLD, else SELL. A BUY is downgraded to HOLD when confidence is below the profile's threshold. Keep new strategy parameters on `StrategyProfile` rather than branching on `StrategyType` at call sites.
 
-The `BaseAgent.llmCall()` follows a fallback chain: `LlmManager` (multi-model) → `ChatClient` (single) → template output. Never throw when LLM is unavailable.
+### Agent contract and thread safety
 
-### Backend (Spring Boot + Spring AI)
+Agents are singleton beans; per-request state lives in `BaseAgent`'s `ThreadLocal<Map<String,Object>>`. **Always `clearContext()` after a request** — the ThreadLocal leaks across pooled threads otherwise. Common keys: `stockCode`, `stockName`, `strategy`, `marketData`, `technicalIndicators`, `sentimentData`, `tradeSignal`, `confidence`, `sessionId`, `contextSummary`, plus `bullView`/`bearView`/`neutralView` in debate.
 
-**Agent System** (`backend/src/main/java/com/alphamind/agent/`):
+`BaseAgent.llmCall()` chain: `LlmManager` (multi-model + circuit breaker) → single `ChatClient` → `null`. Returning `null` is the contract for "fall back to a template" — never throw when the LLM is unavailable. If `contextSummary` is set, it is prepended to the user prompt as 【近期会话上下文】.
 
-- `BaseAgent.java` - Abstract base class defining the agent contract
-- `MarketAgent.java` - Maps provider-originated market snapshots into analysis data
-- `market/provider/` - Sina quote and Eastmoney daily-K adapters; providers never synthesize data
-- `market/service/` - Provider composition, Redis/local cache, stale-cache fallback, and explicit failure
-- `TechnicalAgent.java` - Performs technical analysis (indicators, patterns)
-- `SentimentAgent.java` - Analyzes news/sentiment data
-- `PortfolioAgent.java` - Generates investment recommendations
-- `BullAgent.java` / `BearAgent.java` - Debate mode advocates
-- `NeutralAgent.java` - Debate mode neutral analyst
-- `ArbitratorAgent.java` - Final decision maker in debate mode
+### LLM management (`LlmManager`)
 
-**Key Services** (`backend/src/main/java/com/alphamind/service/`):
+Collects every `ChatModel` bean Spring AI auto-configures (OpenAI / DeepSeek / Anthropic) via `@Autowired(required = false)`, then calls them in registration order with a per-model circuit breaker: 2 retries per call, 3 consecutive failures → OPEN, 30s cooldown → HALF_OPEN probe. Returns `null` only when every model is unavailable.
 
-- `PipelineOrchestrator.java` - Orchestrates the pipeline agent flow (Market → Technical → Sentiment → Portfolio)
-- `MemoryService.java` - Manages conversation history via Redis
-- `StockService.java` - Stock data operations
+### Prompt versioning (`PromptManager`)
 
-**API Controllers** (`backend/src/main/java/com/alphamind/controller/`):
+Each agent registers `getSystemPrompt()` as version 1 from `BaseAgent`'s `@PostConstruct`. `getEffectiveSystemPrompt()` prefers the managed active version, so the hardcoded prompt in an agent class is a default, not necessarily what runs. Versions can be created and rolled back at runtime through `AdminController`.
 
-- `AnalysisController.java` - SSE streaming analysis endpoint at `/api/v1/analysis/stream`
-- `ChatController.java` - Chat session management at `/api/v1/chat/*`
-- `StockController.java` - Stock search and watchlist at `/api/v1/stocks/*`
+### Market data (`market/`)
 
-**DTOs** (`backend/src/main/java/com/alphamind/model/dto/`):
+Read order is strict: **fresh cache → real provider chain → explicitly-labelled stale cache → `MarketDataUnavailableException`**. Never insert a random or static fallback — the whole package is built so callers can distinguish real data from a degraded read.
 
-- `AnalysisReportDTO.java` - Final combined analysis report
-- `TradeSignalDTO.java` - Buy/Sell/Hold recommendation with entry/exit prices
-- `JudgmentDTO.java` - Debate arbitration result
+- `MarketDataProviderChain` composes providers independently for quote (`SinaQuoteMarketDataProvider`) and daily K-lines (`EastmoneyKlineMarketDataProvider`); a snapshot may legitimately mix sources, and each source name is recorded on `MarketDataSnapshot`. A history provider is skipped unless it returns at least `historyDays` bars.
+- `ResilientMarketDataService` returns a `MarketDataResolution` carrying `Status` (`FRESH_CACHE` / `LIVE` / `STALE_CACHE`), age in seconds, and a Chinese warning string on stale reads. Propagate that warning to the UI rather than silently swallowing it.
+- `FETCH_REAL_DATA=false` makes the chain throw immediately; only an in-age cached snapshot can satisfy the request.
+- Providers do not supply PE, PB, or market cap — those fields stay null and must not feed valuation conclusions.
 
-### Frontend (Next.js 16 + App Router)
+### Chat routing (`AgentRouter`)
 
-**Routing** (`frontend/src/app/`):
+Messages starting with `@Market`, `@TechnicalAgent`, `@Bull`, … (case-insensitive, `Agent` suffix optional) are routed to that agent with the mention stripped from the content. Unrecognized mentions and plain messages fall back to the caller's `agentType`, defaulting to `PORTFOLIO`.
 
-- `page.tsx` - Main analysis page
-- `chat/` - Chat interface
-- `history/` - Analysis history
-- `watchlist/` - Watchlist management
+### Persistence
 
-**Components** (`frontend/src/components/`):
+Analysis reports are persisted through `AnalysisReportRepository` (JPA, jsonb columns mapped by `AnalysisReportMapper`) — not an in-memory buffer. `MAX_HISTORY = 50` in `AnalysisController` caps the *query* size. Chat sessions/messages have both JPA entities and Redis-backed `MemoryService` storage. Watchlist is JPA-backed with `userId` defaulting to `"default"`.
 
-- `agent/` - Agent message display and selection
-- `analysis/` - Analysis and debate result display
-- `chart/` - K-line and technical indicator charts (ECharts)
-- `common/` - Shared UI components (Button, StockSearch, ConfidenceBar)
+## API Contract (backend :8080)
 
-**State Management** (`frontend/src/stores/`):
+All REST responses use the `ApiResponse<T>` envelope (`code`, `message`, `data`). SSE endpoints are the exception — they write raw `event: <name>\ndata: <json>\n\n` frames.
 
-- Zustand stores for analysis state, chat sessions, and UI state
+**Analysis** — `GET /api/v1/analysis/stream?stockCode=&stockName=&strategy=&mode=&enableDebate=&sessionId=`
+Named events: `stage`, `data` (carries `agentType` + payload), `result` (an `ApiResponse<AnalysisReportDTO>`), `complete`, `error`. Order matters: the report is persisted, then `result`, then `complete` — clients must not disconnect on the first terminal-looking event.
+Also `POST /api/v1/analysis/analyze` (synchronous) and `GET /api/v1/analysis/history?stockCode=&limit=`.
 
-**API Client** (`frontend/src/api/`):
+**Chat** — `POST /api/v1/chat/session`, `POST /api/v1/chat/message`, `GET /api/v1/chat/stream/{sessionId}`, `GET /api/v1/chat/history/{sessionId}`, `DELETE /api/v1/chat/session/{sessionId}`.
 
-- Axios-based API client for backend communication
+**Stocks** — `GET /api/v1/stocks/search?query=` (note: `query`, not `keyword`), `GET /api/v1/stocks/{code}`, `GET /api/v1/stocks/recommendations/weekly`, and `/api/v1/stocks/watchlist` CRUD.
 
-### API Contract (Backend Port 8080)
+**Admin** — `GET/POST /api/v1/admin/prompts/{agentType}`, `GET /api/v1/admin/prompts/{agentType}/versions`, `POST /api/v1/admin/prompts/{agentType}/rollback/{version}`, `GET /api/v1/admin/llm/health`, `POST /api/v1/admin/llm/{modelName}/reset`.
 
-**SSE Analysis Stream**:
+**Actuator** — `/actuator/health`, `/info`, `/metrics` only.
 
-```
-GET /api/v1/analysis/stream?stockCode=600519&strategy=BALANCED&enableDebate=true
-```
+Stock search and weekly recommendations are served from a **static in-code `STOCK_DB` map** in `StockService`, not an external metadata source.
 
-Events: `stage` (MARKET/TECHNICAL/SENTIMENT/PORTFOLIO), `complete`, `result`
+## Frontend Conventions
 
-**Chat Session**:
+- Read `frontend/AGENTS.md` first: Next.js 16 has breaking changes from training data, and in-tree docs live in `frontend/node_modules/next/dist/docs/`.
+- Stack is Tailwind v4 + Radix primitives + lucide-react + ECharts + Zustand — **not** a component framework like Ant Design.
+- Use relative `/api/v1/...` URLs only. `next.config.ts` rewrites `/api/:path*` to `BACKEND_API_ORIGIN` (default `http://localhost:8080`). Never hardcode the backend origin.
+- SSE goes through `useSSE` (`EventSource`, not `fetch`); it registers listeners for `stage`, `data`, `complete`, `error`, `message`, `result` and closes on error. Always close the connection in a cleanup function.
+- Stores in `src/stores/` (`analysis`, `chat`, `watchlist`) own their domain state and the SSE event handling for it.
+- Strategy values are lowercase on the wire (`conservative`/`balanced`/`aggressive`); backend `StrategyTypeConverter` is case-insensitive.
+- No mock data flows — the app is wired to real APIs; do not reintroduce mocks for analysis, chat, history, or watchlist.
+- New UI strings must be Chinese, matching existing copy.
 
-```
-POST /api/v1/chat/session?stockCode=600519
-POST /api/v1/chat/message?sessionId={id}&content={msg}&agentType=PORTFOLIO
-GET  /api/v1/chat/stream/{sessionId}?message={msg}&agentType=PORTFOLIO
-```
+## Adding an Agent
 
-**Strategy Types**: CONSERVATIVE (30% position, -5% stop), BALANCED (50%, -7%), AGGRESSIVE (80%, -10%)
-
-## Key Conventions
-
-- All REST endpoints return `ApiResponse<T>` envelope with `code`, `message`, and `data`
-- Frontend strategy values are lowercase (`conservative`/`balanced`/`aggressive`); backend `StrategyTypeConverter` accepts case-insensitive input
-- Stock search uses query parameter `query`, not `keyword`; watchlist defaults `userId` to `default`
-- Frontend code should use relative `/api/v1/...` URLs; `frontend/next.config.ts` rewrites these to `http://localhost:8080/api/:path*`
-- User-facing copy, prompts, and domain text are in Chinese — keep new UI strings consistent
-
-## Important Notes
-
-- Before modifying frontend code, read `frontend/AGENTS.md` and `frontend/CLAUDE.md` — Next.js 16 has breaking changes from earlier versions
-- Backend has test infrastructure configured but no committed test classes (`mvn test` is mainly a compile and Surefire baseline check)
-- Redis is optional; `MemoryService` falls back to local in-memory storage when Redis is unavailable
-- Market data follows fresh cache → real providers → explicitly stale cache → failure; never add an unlabelled random/static fallback
-- Local backend development uses `dev` Spring profile — `application-dev.yml` disables production DB auto-configuration
-- Analysis history uses in-memory deque (most recent 50); chat history uses Redis with in-memory fallback
+1. Extend `BaseAgent`, implement `analyze()`, `chat()`, `getSystemPrompt()`.
+2. Add the value to `AgentType` and wire it into `AgentRouter.getAgent()` (the switch is exhaustive — it will not compile otherwise).
+3. Hook it into `PipelineOrchestrator` or `DebateOrchestrator`, initializing context before and clearing it after.
+4. Use `llmCall()` with a deterministic template fallback so the agent works without an API key.

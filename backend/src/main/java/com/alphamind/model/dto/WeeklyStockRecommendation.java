@@ -25,4 +25,10 @@ public class WeeklyStockRecommendation {
     private Double compositeScore;
     private String summary;
     private List<String> highlights;
+
+    /** 打分所依据的价格来源（如 sina）。 */
+    private String dataSource;
+
+    /** true 表示评分依据的是过期缓存价格，需在前端标注。 */
+    private Boolean stale;
 }

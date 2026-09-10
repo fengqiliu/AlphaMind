@@ -155,9 +155,12 @@ export default function AnalysisPage() {
             if (report.judgment) setJudgment(report.judgment);
             setDebateViews(report.debateViews ?? null);
           }
-        } else if (eventType === "complete") {
+          setCurrentStage("COMPLETE", "分析完成");
           setIsAnalyzing(false);
           disconnectSSE();
+        } else if (eventType === "complete") {
+          // 阶段结束不代表完整报告已送达；兼容 complete 先于 result 的服务端。
+          handleSSEEvent({ event: "complete" });
         } else if (eventType === "error") {
           setError((payload?.message as string) || "分析失败");
           setIsAnalyzing(false);

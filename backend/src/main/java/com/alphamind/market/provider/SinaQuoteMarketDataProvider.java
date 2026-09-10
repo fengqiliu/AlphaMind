@@ -13,14 +13,27 @@ import java.nio.charset.Charset;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Sina public endpoint adapter for a real-time A-share quote. */
 @Component
-public class SinaQuoteMarketDataProvider implements MarketDataProvider {
+public class SinaQuoteMarketDataProvider implements MarketDataProvider, BatchQuoteProvider {
 
     private static final Charset GBK = Charset.forName("GBK");
     private static final DateTimeFormatter SINA_TIMESTAMP = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+    /** 单次批量请求的最大股票数，避免 URL 过长与上游限流。 */
+    private static final int BATCH_SIZE = 50;
+
+    /** 匹配 {@code var hq_str_sh600519="..."} 中的市场前缀与 6 位代码。 */
+    private static final Pattern SYMBOL_PATTERN = Pattern.compile("hq_str_[a-z]{2}(\\d{6})");
 
     private final RestOperations restOperations;
 
@@ -62,6 +75,63 @@ public class SinaQuoteMarketDataProvider implements MarketDataProvider {
         } catch (Exception exception) {
             return Optional.empty();
         }
+    }
+
+    @Override
+    public Map<String, MarketQuote> fetchQuotes(Collection<String> stockCodes) {
+        if (stockCodes == null || stockCodes.isEmpty()) {
+            return Map.of();
+        }
+        List<String> codes = stockCodes.stream()
+                .filter(SinaQuoteMarketDataProvider::isAshareCode)
+                .distinct()
+                .toList();
+
+        Map<String, MarketQuote> quotes = new LinkedHashMap<>();
+        for (int from = 0; from < codes.size(); from += BATCH_SIZE) {
+            List<String> chunk = codes.subList(from, Math.min(from + BATCH_SIZE, codes.size()));
+            quotes.putAll(fetchChunk(chunk));
+        }
+        return quotes;
+    }
+
+    private Map<String, MarketQuote> fetchChunk(List<String> codes) {
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set("Referer", "https://finance.sina.com.cn");
+            headers.set("User-Agent", "Mozilla/5.0 (compatible; AlphaMind/1.0)");
+            String symbols = String.join(",", codes.stream().map(SinaQuoteMarketDataProvider::toSinaSymbol).toList());
+            ResponseEntity<byte[]> response = restOperations.exchange(
+                    "https://hq.sinajs.cn/list=" + symbols, HttpMethod.GET,
+                    new HttpEntity<>(headers), byte[].class);
+            if (response.getBody() == null) {
+                return Map.of();
+            }
+            return parseQuotes(new String(response.getBody(), GBK));
+        } catch (Exception exception) {
+            return Map.of();
+        }
+    }
+
+    /**
+     * Package-visible parsing entry point for a multi-symbol response. Each line
+     * carries its own symbol, so a malformed or suspended entry is skipped
+     * without discarding the rest of the batch.
+     */
+    static Map<String, MarketQuote> parseQuotes(String body) {
+        if (body == null || body.isBlank()) {
+            return Map.of();
+        }
+        Map<String, MarketQuote> quotes = new LinkedHashMap<>();
+        for (String line : body.split("\\r?\\n")) {
+            Matcher matcher = SYMBOL_PATTERN.matcher(line);
+            if (!matcher.find()) {
+                continue;
+            }
+            String stockCode = matcher.group(1);
+            parseQuote(stockCode, line).ifPresent(quote -> quotes.put(stockCode, quote));
+        }
+        return quotes;
     }
 
     /**
