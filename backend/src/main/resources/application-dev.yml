@@ -4,6 +4,13 @@ alphamind:
     allowed-origins: http://localhost:3000
   market:
     fetch-real-data: true
+    kline-days: 120
+  llm:
+    primary-provider: openai
+    fallback-providers:
+      - deepseek
+      - anthropic
+    timeout-seconds: 120
 
 spring:
   # PostgreSQL 本地开发数据库
@@ -39,6 +46,13 @@ spring:
 
 # Spring AI - 开发环境
 spring.ai:
+  # Redis Vector Store —— 开发环境：schema 由开发者手动或 Redis Stack 自动建立
+  vectorstore:
+    redis:
+      index: alphamind-analysis-dev
+      prefix: "alphamind:vec:dev:"
+      initialize-schema: false
+
   openai:
     api-key: ${OPENAI_API_KEY:demo-key}
     base-url: https://api.openai.com

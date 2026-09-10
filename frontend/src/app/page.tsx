@@ -24,7 +24,7 @@ import {
   ConfidenceLevel,
 } from "@/types";
 import { formatDate } from "@/utils";
-import { downloadReportJson, downloadReportMarkdown } from "@/utils/reportExport";
+import { downloadReportJson, downloadReportMarkdown, downloadReportPdf } from "@/utils/reportExport";
 import {
   Play,
   Square,
@@ -36,6 +36,7 @@ import {
   Newspaper,
   Download,
   FileDown,
+  FileText,
 } from "lucide-react";
 
 export default function AnalysisPage() {
@@ -177,6 +178,16 @@ export default function AnalysisPage() {
     disconnectSSE();
     eventSourceRef.current = null;
     clearResults();
+  };
+
+  const [isPdfGenerating, setIsPdfGenerating] = useState(false);
+  const handleDownloadPdf = async (report: AnalysisReport) => {
+    setIsPdfGenerating(true);
+    try {
+      await downloadReportPdf(report);
+    } finally {
+      setIsPdfGenerating(false);
+    }
   };
 
   const isPositive = (marketData?.changePercent || 0) >= 0;
@@ -588,6 +599,20 @@ export default function AnalysisPage() {
                   variant="outline"
                   size="sm"
                   className="border-[var(--border)]"
+                  disabled={isPdfGenerating}
+                  onClick={() => void handleDownloadPdf(exportableReport)}
+                >
+                  {isPdfGenerating ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <FileText className="w-4 h-4" />
+                  )}
+                  导出PDF
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-[var(--border)]"
                   onClick={() => downloadReportJson(exportableReport)}
                 >
                   <Download className="w-4 h-4" />
@@ -600,7 +625,7 @@ export default function AnalysisPage() {
                   onClick={() => downloadReportMarkdown(exportableReport)}
                 >
                   <FileDown className="w-4 h-4" />
-                  导出Markdown
+                  导出MD
                 </Button>
               </div>
             )}

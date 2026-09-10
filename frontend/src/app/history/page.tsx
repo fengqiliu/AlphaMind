@@ -18,7 +18,7 @@ import {
   Minus,
 } from "lucide-react";
 import { cn, formatDate } from "@/utils";
-import { downloadReportJson, downloadReportMarkdown } from "@/utils/reportExport";
+import { downloadReportJson, downloadReportMarkdown, downloadReportPdf } from "@/utils/reportExport";
 
 export default function HistoryPage() {
   const [reports, setReports] = useState<AnalysisReport[]>([]);
@@ -27,6 +27,7 @@ export default function HistoryPage() {
   const [selectedReport, setSelectedReport] = useState<AnalysisReport | null>(
     null,
   );
+  const [pdfGeneratingId, setPdfGeneratingId] = useState<string | null>(null);
 
   useEffect(() => {
     getAnalysisHistory()
@@ -43,6 +44,16 @@ export default function HistoryPage() {
   const handleDownloadMarkdown = (e: React.MouseEvent, report: AnalysisReport) => {
     e.stopPropagation();
     downloadReportMarkdown(report);
+  };
+
+  const handleDownloadPdf = async (e: React.MouseEvent, report: AnalysisReport) => {
+    e.stopPropagation();
+    setPdfGeneratingId(report.id);
+    try {
+      await downloadReportPdf(report);
+    } finally {
+      setPdfGeneratingId(null);
+    }
   };
 
   const signalConfig = {
@@ -184,6 +195,20 @@ export default function HistoryPage() {
 
                     {/* Actions */}
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        disabled={pdfGeneratingId === report.id}
+                        onClick={(e) => void handleDownloadPdf(e, report)}
+                        className="text-[var(--text-muted)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]"
+                        title="导出 PDF"
+                      >
+                        {pdfGeneratingId === report.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <FileText className="w-4 h-4" />
+                        )}
+                      </Button>
                       <Button
                         variant="ghost"
                         size="icon"
