@@ -21,6 +21,9 @@ export function StockSearch({
   const [results, setResults] = useState<StockSearchResult[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const requestVersion = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -41,24 +44,23 @@ export function StockSearch({
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!query.trim()) {
-      debounceRef.current = setTimeout(() => setResults([]), 0);
-      return;
-    }
+    if (!query.trim()) return;
 
     let cancelled = false;
+    const version = requestVersion.current;
     debounceRef.current = setTimeout(async () => {
       setIsLoading(true);
       try {
         const data = await searchStocks(query);
-        if (!cancelled) setResults(data);
+        if (!cancelled && version === requestVersion.current) setResults(data);
       } catch (e) {
-        if (!cancelled) {
+        if (!cancelled && version === requestVersion.current) {
           console.error("Search error:", e);
           setResults([]);
+          setError("搜索失败，请稍后重新输入重试");
         }
       } finally {
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled && version === requestVersion.current) setIsLoading(false);
       }
     }, 300);
 
@@ -69,10 +71,14 @@ export function StockSearch({
   }, [query]);
 
   const handleSelect = (stock: StockSearchResult) => {
+    requestVersion.current++;
     onSelect(stock);
     setQuery("");
     setResults([]);
     setIsOpen(false);
+    setIsLoading(false);
+    setError(null);
+    setActiveIndex(-1);
   };
 
   return (
@@ -81,10 +87,32 @@ export function StockSearch({
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
         <input
           type="text"
+          aria-label="搜索股票"
+          autoComplete="off"
           value={query}
           onChange={(e) => {
+            requestVersion.current++;
             setQuery(e.target.value);
+            setResults([]);
+            setError(null);
+            setActiveIndex(-1);
+            setIsLoading(Boolean(e.target.value.trim()));
             setIsOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return;
+            if (e.key === "Escape" || e.key === "Tab") setIsOpen(false);
+            if ((e.key === "ArrowDown" || e.key === "ArrowUp") && results.length) {
+              e.preventDefault();
+              setIsOpen(true);
+              setActiveIndex((index) => e.key === "ArrowDown"
+                ? (index + 1) % results.length
+                : (index <= 0 ? results.length - 1 : index - 1));
+            }
+            if (e.key === "Enter" && isOpen && activeIndex >= 0 && results[activeIndex]) {
+              e.preventDefault();
+              handleSelect(results[activeIndex]);
+            }
           }}
           onFocus={() => setIsOpen(true)}
           placeholder={placeholder}
@@ -92,9 +120,16 @@ export function StockSearch({
         />
         {query && (
           <button
+            type="button"
+            aria-label="清空搜索"
             onClick={() => {
+              requestVersion.current++;
               setQuery("");
               setResults([]);
+              setIsLoading(false);
+              setError(null);
+              setActiveIndex(-1);
+              setIsOpen(false);
             }}
             className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
           >
@@ -109,7 +144,9 @@ export function StockSearch({
 
       {isOpen && (query.trim().length > 0 || results.length > 0) && (
         <div className="absolute top-full left-0 right-0 mt-2 glass-card-glow rounded-xl max-h-72 overflow-auto z-50">
-          {isLoading && results.length === 0 ? (
+          {error ? (
+            <div role="alert" className="p-4 text-sm text-[var(--bearish)]">{error}</div>
+          ) : isLoading && results.length === 0 ? (
             <div className="p-4 text-center text-sm text-[var(--text-muted)] font-mono">
               <Loader2 className="w-4 h-4 animate-spin inline mr-2" />
               搜索中...
@@ -122,10 +159,14 @@ export function StockSearch({
             results.map((stock, index) => (
               <button
                 key={stock.code}
+                type="button"
+                aria-current={index === activeIndex ? "true" : undefined}
+                onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => handleSelect(stock)}
                 className={cn(
                   "w-full px-4 py-3 text-left transition-colors flex items-center gap-3",
                   "hover:bg-[var(--accent-subtle)]",
+                  index === activeIndex && "bg-[var(--accent-subtle)]",
                   index < results.length - 1 &&
                     "border-b border-[var(--border)]",
                 )}

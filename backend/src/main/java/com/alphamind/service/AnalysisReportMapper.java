@@ -26,10 +26,10 @@ public class AnalysisReportMapper {
                 .id(dto.getId())
                 .stockCode(dto.getStockCode())
                 .stockName(dto.getStockName() != null ? dto.getStockName() : dto.getStockCode())
-                .marketData(dto.getMarketData())
-                .technicalIndicators(dto.getTechnicalIndicators())
-                .sentimentData(dto.getSentimentData())
-                .judgment(dto.getJudgment());
+                .marketData(toJsonValue(dto.getMarketData()))
+                .technicalIndicators(toJsonValue(dto.getTechnicalIndicators()))
+                .sentimentData(toJsonValue(dto.getSentimentData()))
+                .judgment(toJsonValue(dto.getJudgment()));
 
         if (dto.getFinalSignal() != null) {
             builder.signalType(dto.getFinalSignal().name());
@@ -57,6 +57,16 @@ public class AnalysisReportMapper {
         return builder.build();
     }
 
+    /** Hibernate 的 JSONB 类型需要可序列化的 JSON 值，不能直接绑定 DTO 实例。 */
+    private Object toJsonValue(Object value) {
+        if (value == null) return null;
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("分析报告 JSON 字段序列化失败", exception);
+        }
+    }
+
     public AnalysisReportDTO toDTO(AnalysisReportEntity entity) {
         AnalysisReportDTO dto = new AnalysisReportDTO();
         dto.setId(entity.getId());
@@ -64,17 +74,17 @@ public class AnalysisReportMapper {
         dto.setStockName(entity.getStockName());
 
         if (entity.getMarketData() != null) {
-            dto.setMarketData(objectMapper.convertValue(entity.getMarketData(), MarketDataDTO.class));
+            dto.setMarketData(fromJsonValue(entity.getMarketData(), MarketDataDTO.class));
         }
         if (entity.getTechnicalIndicators() != null) {
-            dto.setTechnicalIndicators(objectMapper.convertValue(
+            dto.setTechnicalIndicators(fromJsonValue(
                     entity.getTechnicalIndicators(), TechnicalIndicatorsDTO.class));
         }
         if (entity.getSentimentData() != null) {
-            dto.setSentimentData(objectMapper.convertValue(entity.getSentimentData(), SentimentDataDTO.class));
+            dto.setSentimentData(fromJsonValue(entity.getSentimentData(), SentimentDataDTO.class));
         }
         if (entity.getJudgment() != null) {
-            dto.setJudgment(objectMapper.convertValue(entity.getJudgment(), JudgmentDTO.class));
+            dto.setJudgment(fromJsonValue(entity.getJudgment(), JudgmentDTO.class));
         }
 
         if (entity.getEntryPrice() != null || entity.getTargetPrice() != null) {
@@ -103,6 +113,17 @@ public class AnalysisReportMapper {
             dto.setCreatedAt(entity.getCreatedAt().toLocalDateTime());
         }
         return dto;
+    }
+
+    private <T> T fromJsonValue(Object value, Class<T> targetType) {
+        try {
+            if (value instanceof String json) {
+                return objectMapper.readValue(json, targetType);
+            }
+            return objectMapper.convertValue(value, targetType);
+        } catch (Exception exception) {
+            throw new IllegalArgumentException("分析报告 JSON 字段反序列化失败", exception);
+        }
     }
 
     private SignalType parseSignalType(String value) {

@@ -1,5 +1,6 @@
 package com.alphamind.market.provider;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.http.HttpEntity;
@@ -37,6 +38,7 @@ public class SinaQuoteMarketDataProvider implements MarketDataProvider, BatchQuo
 
     private final RestOperations restOperations;
 
+    @Autowired
     public SinaQuoteMarketDataProvider(
             RestTemplateBuilder restTemplateBuilder,
             @Value("${alphamind.market.connect-timeout-ms:3000}") long connectTimeoutMs,

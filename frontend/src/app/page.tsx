@@ -252,7 +252,7 @@ export default function AnalysisPage() {
       />
 
       {/* Search & Control Bar */}
-      <div className="glass-card-glow p-5 animate-enter delay-100">
+      <div className="relative z-30 glass-card-glow p-5 animate-enter delay-100">
         <div className="flex flex-col md:flex-row gap-4">
           <div className="flex-1">
             <StockSearch

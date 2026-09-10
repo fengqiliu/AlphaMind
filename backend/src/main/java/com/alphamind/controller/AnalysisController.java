@@ -13,6 +13,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
@@ -41,7 +42,7 @@ public class AnalysisController {
      * SSE流式分析
      */
     @GetMapping(value = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public Flux<String> streamAnalysis(
+    public Flux<ServerSentEvent<String>> streamAnalysis(
             @RequestParam String stockCode,
             @RequestParam(required = false) String stockName,
             @RequestParam(required = false, defaultValue = "BALANCED") StrategyType strategy,
@@ -67,7 +68,10 @@ public class AnalysisController {
                                 String json = objectMapper.writeValueAsString(event);
                                 // 使用具名 SSE 事件格式：event: <type>\ndata: <json>\n\n
                                 String eventName = event.getEvent() != null ? event.getEvent() : "message";
-                                emitter.next("event: " + eventName + "\ndata: " + json + "\n\n");
+                                emitter.next(ServerSentEvent.<String>builder()
+                                        .event(eventName)
+                                        .data(json)
+                                        .build());
                             } catch (Exception e) {
                                 log.error("序列化SSE事件失败", e);
                             }
@@ -80,10 +84,16 @@ public class AnalysisController {
                 try {
                     String resultJson = objectMapper.writeValueAsString(
                             ApiResponse.success("分析完成", report));
-                    emitter.next("event: result\ndata: " + resultJson + "\n\n");
+                    emitter.next(ServerSentEvent.<String>builder()
+                            .event("result")
+                            .data(resultJson)
+                            .build());
 
                     String completeJson = objectMapper.writeValueAsString(SSEEvent.completeEvent());
-                    emitter.next("event: complete\ndata: " + completeJson + "\n\n");
+                    emitter.next(ServerSentEvent.<String>builder()
+                            .event("complete")
+                            .data(completeJson)
+                            .build());
                 } catch (Exception e) {
                     log.error("序列化结果失败", e);
                 }
@@ -95,7 +105,10 @@ public class AnalysisController {
                 try {
                     String errorJson = objectMapper.writeValueAsString(
                             ApiResponse.error(e.getMessage()));
-                    emitter.next("event: error\ndata: " + errorJson + "\n\n");
+                    emitter.next(ServerSentEvent.<String>builder()
+                            .event("error")
+                            .data(errorJson)
+                            .build());
                 } catch (Exception ex) {
                     // ignore
                 }
