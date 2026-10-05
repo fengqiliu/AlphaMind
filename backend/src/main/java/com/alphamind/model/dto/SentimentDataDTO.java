@@ -26,6 +26,9 @@ public class SentimentDataDTO {
     /** 最新新闻标题（来自真实新闻源，按发布时间倒序）。新闻源不可用时为 null。 */
     private List<String> recentHeadlines;
 
+    /** 新闻标题关键词情绪信号（0.2~0.8，0.5 中性）。新闻源不可用时为 null。 */
+    private Double newsSignal;
+
     /** 新闻来源（如 eastmoney）。新闻源不可用时为 null。 */
     private String newsDataSource;
 

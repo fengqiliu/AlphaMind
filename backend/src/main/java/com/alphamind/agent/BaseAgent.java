@@ -2,6 +2,7 @@ package com.alphamind.agent;
 
 import com.alphamind.model.dto.AnalysisReportDTO;
 import com.alphamind.model.dto.ChatMessage;
+import com.alphamind.model.dto.SentimentDataDTO;
 import com.alphamind.model.enums.AgentType;
 import com.alphamind.service.LlmManager;
 import com.alphamind.service.PromptManager;
@@ -175,6 +176,35 @@ public abstract class BaseAgent {
         }
 
         return null;
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // 新闻辅助
+    // ──────────────────────────────────────────────────────────────────────
+
+    /**
+     * 把真实新闻标题追加进 Prompt，供辩论与摘要 Agent 使用；无新闻时返回原文。
+     * 标题来自 {@link SentimentDataDTO#getRecentHeadlines()}，由 SentimentAgent 从真实新闻源填充。
+     */
+    protected String appendNewsHeadlines(String prompt, SentimentDataDTO sentiment) {
+        if (sentiment == null || sentiment.getRecentHeadlines() == null
+                || sentiment.getRecentHeadlines().isEmpty()) {
+            return prompt;
+        }
+        StringBuilder builder = new StringBuilder(prompt)
+                .append("\n\n最新资讯标题（来自真实新闻源，请结合消息面作答）：");
+        sentiment.getRecentHeadlines().forEach(title -> builder.append("\n- ").append(title));
+        return builder.toString();
+    }
+
+    /** 各来源新闻总数；新闻源不可用时为 0。 */
+    protected static int totalNewsCount(SentimentDataDTO sentiment) {
+        if (sentiment == null || sentiment.getNewsCountBySource() == null) {
+            return 0;
+        }
+        return sentiment.getNewsCountBySource().values().stream()
+                .mapToInt(count -> count == null ? 0 : count)
+                .sum();
     }
 
     // ──────────────────────────────────────────────────────────────────────

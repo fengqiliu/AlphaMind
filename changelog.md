@@ -11,7 +11,9 @@
 - 新增离线响应解析、Provider 链、缓存降级与 JSON 快照往返测试
 - 新增 `com.alphamind.news` 真实新闻模块：东方财富个股新闻 Provider、Redis/本地两级新闻缓存与过期降级
 - `SentimentDataDTO` 增加最新新闻标题、新闻来源与过期标记，舆情摘要与 LLM Prompt 基于真实新闻标题
-- 前端舆情卡展示最新资讯列表与新闻来源/过期徽章
+- 辩论模式四个 Agent（Bull/Bear/Neutral/Arbitrator）的 LLM Prompt 注入真实新闻标题，模板论点引用真实新闻收录数
+- 新增 `HeadlineSentimentScorer`：基于真实新闻标题关键词的确定性情绪信号，以 12% 权重混合进舆情评分；命中的关键词作为利好/利空因素透出，无新闻时评分退回纯行情信号
+- 报告导出（Markdown/PDF）包含最新资讯列表与来源/过期标记；自选股页展示行情来源与实时/过期徽章；舆情卡展示新闻信号
 
 ### Changed
 

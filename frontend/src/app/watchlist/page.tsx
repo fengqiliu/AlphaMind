@@ -169,8 +169,20 @@ export default function WatchlistPage() {
                         {item.stockCode}
                       </span>
                     </div>
-                    <div className="text-xs text-[var(--text-muted)] mt-1">
+                    <div className="text-xs text-[var(--text-muted)] mt-1 flex items-center gap-1">
                       {getMarketName(item.stockCode)} · 主板
+                      {item.dataSource && (
+                        <span
+                          className={cn(
+                            "font-mono",
+                            item.stale
+                              ? "text-[var(--neutral)]"
+                              : "text-[var(--bullish)]",
+                          )}
+                        >
+                          · {item.stale ? "过期缓存" : "实时"} {item.dataSource}
+                        </span>
+                      )}
                     </div>
                   </div>
 

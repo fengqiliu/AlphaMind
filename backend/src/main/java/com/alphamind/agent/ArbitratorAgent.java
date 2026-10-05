@@ -247,7 +247,7 @@ public class ArbitratorAgent extends BaseAgent {
                     signal != null ? signal.getTargetPrice() : 0.0,
                     signal != null ? signal.getStopLoss() : 0.0);
 
-            String llmResult = llmCall(getSystemPrompt(), prompt);
+            String llmResult = llmCall(getSystemPrompt(), appendNewsHeadlines(prompt, sentiment));
             if (llmResult != null) return llmResult;
         }
 

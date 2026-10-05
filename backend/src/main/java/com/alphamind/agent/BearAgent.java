@@ -121,7 +121,7 @@ public class BearAgent extends BaseAgent {
     }
 
     private String buildBearPrompt(MarketDataDTO market, TechnicalIndicatorsDTO tech, SentimentDataDTO sentiment, String question) {
-        return String.format("""
+        return appendNewsHeadlines(String.format("""
                 股票: %s (%s), 当前价: ¥%.2f, 涨跌: %+.2f%%
                 技术评分: %d/100, 舆情评分: %.0f/100
                 用户问题: %s
@@ -133,7 +133,7 @@ public class BearAgent extends BaseAgent {
                 market != null && market.getChangePercent() != null ? market.getChangePercent() : 0,
                 tech != null ? tech.getTechnicalScore() : 0,
                 sentiment != null ? sentiment.getSentimentScore() * 100 : 0,
-                question);
+                question), sentiment);
     }
 
     private List<String> extractBearReasons(MarketDataDTO market, TechnicalIndicatorsDTO tech, SentimentDataDTO sentiment) {
@@ -156,6 +156,9 @@ public class BearAgent extends BaseAgent {
         }
         if (sentiment != null && sentiment.getSentimentScore() < 0.45)
             reasons.add("舆情评分低于 45/100，负面情绪累积");
+        int newsCount = totalNewsCount(sentiment);
+        if (newsCount > 0)
+            reasons.add("新闻源近期收录 " + newsCount + " 篇相关资讯，需甄别消息面的利空信号");
         if (reasons.isEmpty()) {
             reasons.add("当前价格缺乏向上催化剂，备位调整冨力");
             reasons.add("宏观不确定性增大，和屢观望为优");

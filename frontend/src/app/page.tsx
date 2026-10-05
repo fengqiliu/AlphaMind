@@ -509,6 +509,8 @@ export default function AnalysisPage() {
                 {sentimentData.sentimentTrend}
               </span>
               <span className="text-xs font-mono text-[var(--text-muted)]">
+                {sentimentData.newsSignal != null &&
+                  `新闻信号 ${Math.round(sentimentData.newsSignal * 100)} · `}
                 媒体关注度 {Math.round(sentimentData.mediaAttention * 100)}%
               </span>
             </div>

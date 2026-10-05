@@ -82,6 +82,15 @@ export function reportToMarkdown(report: AnalysisReport): string {
     "",
     "### 风险因素",
     ...report.sentimentData.negativeFactors.map((item) => `- ${item}`),
+    ...(report.sentimentData.recentHeadlines?.length
+      ? [
+          "",
+          `### 最新资讯（来源：${report.sentimentData.newsDataSource || "未标明"}${
+            report.sentimentData.newsStale ? "，过期缓存" : ""
+          }）`,
+          ...report.sentimentData.recentHeadlines.map((item) => `- ${item}`),
+        ]
+      : []),
   ];
 
   if (report.judgment) {
@@ -242,6 +251,9 @@ function buildReportHtml(report: AnalysisReport): string {
   const negRows = (s.negativeFactors ?? [])
     .map((f) => `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${f}</div>`)
     .join("");
+  const newsRows = (s.recentHeadlines ?? [])
+    .map((h) => `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${h}</div>`)
+    .join("");
   const sentiment = `
     <div style="${sectionStyle}">
       <p style="${headingStyle}">💬 舆情分析</p>
@@ -259,6 +271,13 @@ function buildReportHtml(report: AnalysisReport): string {
         ${posRows ? `<div><div style="font-size:11px;color:#22c55e;font-weight:700;margin-bottom:5px;">▲ 利好因素</div>${posRows}</div>` : ""}
         ${negRows ? `<div><div style="font-size:11px;color:#ef4444;font-weight:700;margin-bottom:5px;">▼ 风险因素</div>${negRows}</div>` : ""}
       </div>
+      ${
+        newsRows
+          ? `<div style="margin-top:10px;"><div style="font-size:11px;color:#64748b;font-weight:700;margin-bottom:5px;">📰 最新资讯${
+              s.newsDataSource ? `（来源：${s.newsDataSource}${s.newsStale ? "，过期缓存" : ""}）` : ""
+            }</div>${newsRows}</div>`
+          : ""
+      }
     </div>`;
 
   let judgment = "";

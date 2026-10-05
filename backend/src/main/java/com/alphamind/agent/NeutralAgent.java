@@ -29,7 +29,7 @@ public class NeutralAgent extends BaseAgent {
         SentimentDataDTO sentiment = getContext("sentimentData");
 
         String viewText;
-        String llmPrompt = String.format("""
+        String llmPrompt = appendNewsHeadlines(String.format("""
                 股票: %s, 当前价: ¥%.2f
                 技术评分: %d/100, 舆情评分: %.0f/100
                 请从客观中立立场，列出该股相等分量的多空双方因素，并给出情景分析。
@@ -37,7 +37,7 @@ public class NeutralAgent extends BaseAgent {
                 market != null ? market.getStockName() : "N/A",
                 market != null ? market.getCurrentPrice() : 0,
                 tech != null ? tech.getTechnicalScore() : 0,
-                sentiment != null ? sentiment.getSentimentScore() * 100 : 0);
+                sentiment != null ? sentiment.getSentimentScore() * 100 : 0), sentiment);
         String llmResult = llmCall(getSystemPrompt(), llmPrompt);
         viewText = llmResult != null ? llmResult : generateNeutralAnalysis(market, tech, sentiment);
 
@@ -148,6 +148,9 @@ public class NeutralAgent extends BaseAgent {
             int posCount = sentiment.getPositiveFactors() != null ? sentiment.getPositiveFactors().size() : 0;
             int negCount = sentiment.getNegativeFactors() != null ? sentiment.getNegativeFactors().size() : 0;
             reasons.add(String.format("舆情%d正面/%d负面，得分%.0f/100", posCount, negCount, score * 100));
+            int newsCount = totalNewsCount(sentiment);
+            if (newsCount > 0)
+                reasons.add("新闻源近期收录 " + newsCount + " 篇相关资讯，多空信号需结合具体消息甄别");
         }
         if (reasons.isEmpty()) reasons.add("当前多空互博，建议观望为主，待信号明确后操作");
         return reasons;

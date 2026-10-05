@@ -154,6 +154,7 @@ export interface SentimentData {
   analysisSummary: string;       // 舆情摘要
   aiSummary?: string;            // LLM 生成摘要（可选）
   recentHeadlines?: string[] | null; // 最新新闻标题（新闻源不可用时为 null）
+  newsSignal?: number | null;        // 新闻标题关键词情绪信号 0.2~0.8（0.5 中性）
   newsDataSource?: string | null;    // 新闻来源（如 eastmoney）
   newsStale?: boolean | null;        // true 表示新闻来自过期缓存
 }
@@ -243,6 +244,8 @@ export interface WatchlistItem {
   currentPrice?: number;
   change?: number;
   changePercent?: number;
+  dataSource?: string | null; // 行情来源（如 sina）；行情不可用时为 null
+  stale?: boolean | null; // true 表示行情来自过期缓存
 }
 
 export interface WeeklyStockRecommendation {

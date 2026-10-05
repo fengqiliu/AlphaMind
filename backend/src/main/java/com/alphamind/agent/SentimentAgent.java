@@ -2,6 +2,7 @@ package com.alphamind.agent;
 
 import com.alphamind.model.dto.*;
 import com.alphamind.model.enums.AgentType;
+import com.alphamind.news.service.HeadlineSentimentScorer;
 import com.alphamind.news.service.NewsResolution;
 import com.alphamind.news.service.StockNewsService;
 import lombok.extern.slf4j.Slf4j;
@@ -178,6 +179,7 @@ public class SentimentAgent extends BaseAgent {
      *   估值信号   25%  — PE:15~35合理→0.6; <15低估→0.7; >50高估→0.35; 无PE→0.5
      *   换手率信号 20%  — turnoverRate ∈ [0,10] 映射，1~3%最佳
      *   量能信号   15%  — kline 最近5日量均 vs 20日量均（量比近似）
+     * 有真实新闻时，上述行情信号合计占 88%，新闻标题关键词情绪信号占 12%。
      */
     private SentimentDataDTO analyzeSentiment(
             String stockCode, MarketDataDTO marketData, Optional<NewsResolution> news) {
@@ -185,6 +187,11 @@ public class SentimentAgent extends BaseAgent {
         double pe           = marketData.getPe()           != null ? marketData.getPe()           : -1;
         double turnoverRate = marketData.getTurnoverRate() != null ? marketData.getTurnoverRate() : 1.0;
         double marketCap    = marketData.getMarketCap()    != null ? marketData.getMarketCap()    : 1e10;
+
+        // 新闻标题情绪信号：确定性关键词评估，无真实新闻时为 null（评分退回纯行情信号）
+        HeadlineSentimentScorer.HeadlineSignal headlineSignal = news
+                .map(resolution -> HeadlineSentimentScorer.evaluate(resolution.snapshot().articles()))
+                .orElse(null);
 
         // ---- 各信号评分 ----
         // 涨跌幅：-10% → 0.0, 0% → 0.5, +10% → 1.0
@@ -240,8 +247,12 @@ public class SentimentAgent extends BaseAgent {
             }
         }
 
-        // 加权合成评分
-        double sentimentScore = priceSignal * 0.40 + peSignal * 0.25 + turnoverSignal * 0.20 + volumeSignal * 0.15;
+        // 加权合成评分：行情信号合计 88% + 新闻标题情绪信号 12%（新闻信号本身被钳制在
+        // [0.2, 0.8]，因此消息面最多把总分拉动约 ±3.6 分，方向可由命中关键词复核）
+        double marketScore = priceSignal * 0.40 + peSignal * 0.25 + turnoverSignal * 0.20 + volumeSignal * 0.15;
+        double sentimentScore = headlineSignal != null
+                ? marketScore * 0.88 + headlineSignal.score() * 0.12
+                : marketScore;
         sentimentScore = Math.max(0.10, Math.min(0.95, sentimentScore));
         sentimentScore = Math.round(sentimentScore * 100) / 100.0;
 
@@ -261,6 +272,9 @@ public class SentimentAgent extends BaseAgent {
         if (turnoverRate >= 1.0 && turnoverRate <= 3.0) positiveFactors.add("成交活跃，资金关注度较高");
         if (volumeSignal > 0.60)   positiveFactors.add("近期量能温和放大，上攻意愿增强");
         if (marketCap > 1e11)      positiveFactors.add("市值规模较大，机构配置意愿较高");
+        if (headlineSignal != null && headlineSignal.positiveHits() > 0)
+            positiveFactors.add(String.format("近期 %d 篇资讯命中利好关键词（%s）",
+                    headlineSignal.positiveHits(), String.join("、", headlineSignal.positiveKeywords())));
         if (positiveFactors.isEmpty()) positiveFactors.add("整体市场情绪平稳，无明显利空压制");
 
         // ---- 负面因素（条件触发）----
@@ -270,6 +284,9 @@ public class SentimentAgent extends BaseAgent {
         if (pe > 50)               negativeFactors.add("估值偏高，上方压力较大");
         if (turnoverRate > 4.0)    negativeFactors.add("换手率过高，存在筹码松动风险");
         if (volumeSignal < 0.42)   negativeFactors.add("成交量萎缩，市场关注度下降");
+        if (headlineSignal != null && headlineSignal.negativeHits() > 0)
+            negativeFactors.add(String.format("近期 %d 篇资讯命中利空关键词（%s）",
+                    headlineSignal.negativeHits(), String.join("、", headlineSignal.negativeKeywords())));
         negativeFactors.add("宏观经济不确定性仍存，需关注外部风险");
         if (negativeFactors.size() == 1 && sentimentScore > 0.60) {
             // 仅有兜底一条时，情绪好的情况下去掉，避免过于负面
@@ -323,6 +340,7 @@ public class SentimentAgent extends BaseAgent {
                 .mediaAttention(mediaAttention)
                 .analysisSummary(analysisSummary)
                 .recentHeadlines(recentHeadlines)
+                .newsSignal(headlineSignal != null ? headlineSignal.score() : null)
                 .newsDataSource(news.map(resolution -> resolution.snapshot().sourceName()).orElse(null))
                 .newsStale(news.map(NewsResolution::stale).orElse(null))
                 .build();
