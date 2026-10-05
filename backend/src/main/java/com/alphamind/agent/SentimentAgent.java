@@ -2,6 +2,8 @@ package com.alphamind.agent;
 
 import com.alphamind.model.dto.*;
 import com.alphamind.model.enums.AgentType;
+import com.alphamind.news.service.NewsResolution;
+import com.alphamind.news.service.StockNewsService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -9,6 +11,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * 舆情Agent - 负责分析市场舆情和情绪
@@ -17,8 +20,14 @@ import java.util.Map;
 @Component
 public class SentimentAgent extends BaseAgent {
 
-    public SentimentAgent() {
+    /** 参与摘要与展示的新闻标题条数。 */
+    private static final int NEWS_HEADLINE_LIMIT = 5;
+
+    private final StockNewsService stockNewsService;
+
+    public SentimentAgent(StockNewsService stockNewsService) {
         super(AgentType.SENTIMENT);
+        this.stockNewsService = stockNewsService;
     }
 
     @Override
@@ -31,8 +40,11 @@ public class SentimentAgent extends BaseAgent {
                 throw new RuntimeException("缺少市场数据");
             }
 
+            // 真实新闻源（失败时为 empty，舆情分析继续但不编造新闻）
+            Optional<NewsResolution> news = stockNewsService.news(report.getStockCode());
+
             // 分析舆情数据
-            SentimentDataDTO sentimentData = analyzeSentiment(report.getStockCode(), marketData);
+            SentimentDataDTO sentimentData = analyzeSentiment(report.getStockCode(), marketData, news);
 
             // 调用LLM生成舆情综合摘要
             String aiSummary = generateSentimentSummary(sentimentData, marketData);
@@ -88,30 +100,38 @@ public class SentimentAgent extends BaseAgent {
     }
 
     private String generateSentimentSummary(SentimentDataDTO data, MarketDataDTO market) {
-        String prompt = String.format(
+        StringBuilder promptBuilder = new StringBuilder(String.format(
                 "请简要分析 %s 的市场舆情：舆情评分%.0f/100，趋势:%s，利好%d项，利空%d项，媒体关注度%.0f%%",
                 market.getStockName(), data.getSentimentScore() * 100, data.getSentimentTrend(),
                 data.getPositiveFactors().size(), data.getNegativeFactors().size(),
-                data.getMediaAttention() * 100);
-        String result = llmCall(getSystemPrompt(), prompt);
+                data.getMediaAttention() * 100));
+        if (data.getRecentHeadlines() != null && !data.getRecentHeadlines().isEmpty()) {
+            promptBuilder.append("。以下是最新新闻标题，请结合它们给出贴合实际消息面的判断：");
+            data.getRecentHeadlines().forEach(title -> promptBuilder.append("\n- ").append(title));
+        }
+        String result = llmCall(getSystemPrompt(), promptBuilder.toString());
         return result != null ? result : data.getAnalysisSummary();
     }
 
     private String buildSentimentPrompt(SentimentDataDTO data, String question) {
-        return String.format("""
+        StringBuilder promptBuilder = new StringBuilder(String.format("""
                 舆情数据：
                 - 舆情评分: %.0f/100
                 - 舆情趋势: %s
                 - 利好因素: %s
                 - 利空因素: %s
                 - 媒体关注度: %.0f/100
-
-                用户问题：%s
                 """,
                 data.getSentimentScore() * 100, data.getSentimentTrend(),
                 String.join("；", data.getPositiveFactors()),
                 String.join("；", data.getNegativeFactors()),
-                data.getMediaAttention() * 100, question);
+                data.getMediaAttention() * 100));
+        if (data.getRecentHeadlines() != null && !data.getRecentHeadlines().isEmpty()) {
+            promptBuilder.append("\n最新新闻标题：");
+            data.getRecentHeadlines().forEach(title -> promptBuilder.append("\n- ").append(title));
+        }
+        promptBuilder.append("\n\n用户问题：").append(question);
+        return promptBuilder.toString();
     }
 
     private String buildSentimentTemplateResponse(SentimentDataDTO data) {
@@ -129,6 +149,11 @@ public class SentimentAgent extends BaseAgent {
             sb.append("\n");
         }
         sb.append(String.format("**媒体关注度**: %.0f/100\n\n", data.getMediaAttention() * 100));
+        if (data.getRecentHeadlines() != null && !data.getRecentHeadlines().isEmpty()) {
+            sb.append("**最新资讯**:\n");
+            data.getRecentHeadlines().forEach(title -> sb.append("- ").append(title).append("\n"));
+            sb.append("\n");
+        }
         sb.append("**总结**: ").append(data.getAnalysisSummary());
         return sb.toString();
     }
@@ -154,7 +179,8 @@ public class SentimentAgent extends BaseAgent {
      *   换手率信号 20%  — turnoverRate ∈ [0,10] 映射，1~3%最佳
      *   量能信号   15%  — kline 最近5日量均 vs 20日量均（量比近似）
      */
-    private SentimentDataDTO analyzeSentiment(String stockCode, MarketDataDTO marketData) {
+    private SentimentDataDTO analyzeSentiment(
+            String stockCode, MarketDataDTO marketData, Optional<NewsResolution> news) {
         double changePct    = marketData.getChangePercent() != null ? marketData.getChangePercent() : 0;
         double pe           = marketData.getPe()           != null ? marketData.getPe()           : -1;
         double turnoverRate = marketData.getTurnoverRate() != null ? marketData.getTurnoverRate() : 1.0;
@@ -258,21 +284,34 @@ public class SentimentAgent extends BaseAgent {
                 + Math.min(turnoverRate / 20.0, 0.15);        // 换手率最多贡献 0.15
         mediaAttention = Math.min(0.95, Math.round(mediaAttention * 100) / 100.0);
 
-        // ---- 新闻来源数量（按市值规模确定性估算）----
-        int capBase = (int) Math.min(marketCap / 2e10, 20); // 0~20
-        Map<String, Integer> newsCountBySource = new LinkedHashMap<>();
-        newsCountBySource.put("东方财富", 8  + capBase);
-        newsCountBySource.put("同花顺",   6  + capBase / 2);
-        newsCountBySource.put("雪球",     15 + capBase * 2);
-        newsCountBySource.put("微博",     20 + capBase * 3);
+        // ---- 新闻数据（真实新闻源；不可用时保持为 null，绝不按市值编造数量）----
+        Map<String, Integer> newsCountBySource = null;
+        List<String> recentHeadlines = null;
+        if (news.isPresent()) {
+            NewsResolution resolution = news.get();
+            newsCountBySource = new LinkedHashMap<>();
+            newsCountBySource.put(resolution.snapshot().sourceName(), resolution.snapshot().articles().size());
+            recentHeadlines = resolution.snapshot().articles().stream()
+                    .map(article -> article.title())
+                    .filter(title -> title != null && !title.isBlank())
+                    .limit(NEWS_HEADLINE_LIMIT)
+                    .toList();
+            if (recentHeadlines.isEmpty()) {
+                recentHeadlines = null;
+            }
+        }
 
         // ---- 摘要 ----
+        String newsSuffix = newsCountBySource == null
+                ? "新闻源暂不可用，舆情判断基于行情信号。"
+                : String.format("新闻源近期收录相关资讯 %d 篇。", newsCountBySource.values().iterator().next());
         String analysisSummary = String.format(
-                "该股近期舆情%s（评分%.2f）。%s涨跌幅%.2f%%，换手率%.2f%%，%s。",
+                "该股近期舆情%s（评分%.2f）。%s涨跌幅%.2f%%，换手率%.2f%%，%s%s。",
                 trend, sentimentScore,
                 positiveFactors.size() > negativeFactors.size() ? "利好因素较多，" : "市场情绪偏谨慎，",
                 changePct, turnoverRate,
-                pe > 0 ? String.format("当前PE %.1f倍", pe) : "暂无PE数据"
+                pe > 0 ? String.format("当前PE %.1f倍，", pe) : "暂无PE数据，",
+                newsSuffix
         );
 
         return SentimentDataDTO.builder()
@@ -283,6 +322,9 @@ public class SentimentAgent extends BaseAgent {
                 .newsCountBySource(newsCountBySource)
                 .mediaAttention(mediaAttention)
                 .analysisSummary(analysisSummary)
+                .recentHeadlines(recentHeadlines)
+                .newsDataSource(news.map(resolution -> resolution.snapshot().sourceName()).orElse(null))
+                .newsStale(news.map(NewsResolution::stale).orElse(null))
                 .build();
     }
 }

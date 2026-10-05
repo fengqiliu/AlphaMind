@@ -481,6 +481,19 @@ export default function AnalysisPage() {
           <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
             <span className="w-1.5 h-5 bg-[var(--neutral)] rounded-full" />
             舆情分析
+            {sentimentData.newsDataSource && (
+              <span
+                className={
+                  "text-xs font-mono font-normal ml-1 " +
+                  (sentimentData.newsStale
+                    ? "text-[var(--neutral)]"
+                    : "text-[var(--bullish)]")
+                }
+              >
+                {sentimentData.newsStale ? "过期缓存" : "实时资讯"}
+                {` · ${sentimentData.newsDataSource}`}
+              </span>
+            )}
           </h2>
           <div className="space-y-4">
             <div className="flex flex-wrap items-center gap-4 p-3 bg-[var(--bg-tertiary)] rounded-xl">
@@ -534,6 +547,23 @@ export default function AnalysisPage() {
                 </div>
               )}
             </div>
+
+            {sentimentData.recentHeadlines && sentimentData.recentHeadlines.length > 0 && (
+              <div>
+                <div className="text-xs font-mono text-[var(--text-muted)] mb-2 flex items-center gap-1">
+                  <Newspaper className="w-3 h-3" />
+                  最新资讯
+                </div>
+                <ul className="space-y-1">
+                  {sentimentData.recentHeadlines.map((headline, i) => (
+                    <li key={i} className="text-sm text-[var(--text-secondary)] flex gap-2 leading-relaxed">
+                      <span className="text-[var(--text-muted)] shrink-0">·</span>
+                      {headline}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {sentimentData.analysisSummary && (
               <p className="text-sm text-[var(--text-muted)] font-mono border-t border-[var(--border)] pt-3 leading-relaxed">

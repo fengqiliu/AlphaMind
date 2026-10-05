@@ -22,4 +22,13 @@ public class SentimentDataDTO {
     private String analysisSummary;
     // LLM生成的舆情综合摘要
     private String aiSummary;
+
+    /** 最新新闻标题（来自真实新闻源，按发布时间倒序）。新闻源不可用时为 null。 */
+    private List<String> recentHeadlines;
+
+    /** 新闻来源（如 eastmoney）。新闻源不可用时为 null。 */
+    private String newsDataSource;
+
+    /** true 表示新闻来自过期缓存，而非实时新闻源。 */
+    private Boolean newsStale;
 }

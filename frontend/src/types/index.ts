@@ -149,10 +149,13 @@ export interface SentimentData {
   sentimentTrend: string;        // 趋势描述
   positiveFactors: string[];     // 正面因素列表
   negativeFactors: string[];     // 负面因素列表
-  newsCountBySource: Record<string, number>; // 各平台新闻数量
+  newsCountBySource?: Record<string, number> | null; // 各来源新闻数量（新闻源不可用时为 null）
   mediaAttention: number;        // 媒体关注度 0~1
   analysisSummary: string;       // 舆情摘要
   aiSummary?: string;            // LLM 生成摘要（可选）
+  recentHeadlines?: string[] | null; // 最新新闻标题（新闻源不可用时为 null）
+  newsDataSource?: string | null;    // 新闻来源（如 eastmoney）
+  newsStale?: boolean | null;        // true 表示新闻来自过期缓存
 }
 
 // 置信区间
