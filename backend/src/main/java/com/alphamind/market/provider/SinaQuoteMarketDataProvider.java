@@ -193,7 +193,7 @@ public class SinaQuoteMarketDataProvider implements MarketDataProvider, BatchQuo
     }
 
     private static String toSinaSymbol(String stockCode) {
-        if (stockCode.startsWith("6") || stockCode.startsWith("9")) {
+        if (stockCode.startsWith("5") || stockCode.startsWith("6") || stockCode.startsWith("9")) {
             return "sh" + stockCode;
         }
         if (stockCode.startsWith("8") || stockCode.startsWith("4")) {

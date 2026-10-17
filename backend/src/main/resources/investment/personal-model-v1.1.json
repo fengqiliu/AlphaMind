@@ -1,0 +1,393 @@
+{
+  "id": "PERSONAL_V1_1",
+  "name": "我的投资模型",
+  "version": "1.1",
+  "versionDate": "2026-10-03",
+  "sourceFile": "我的投资模型_v1.1_2026-10-03.docx",
+  "sourceSha256": "2167f27a5234f094c9db27f4f617f2e7849380e21d93b8e74c2f021400820c6e",
+  "principle": "价格触发复核，估值确认，基本面验证，RSI/ATR择时，组合风险约束。技术指标不证明价值。",
+  "assets": [
+    {
+      "code": "601138",
+      "name": "工业富联",
+      "category": "成长科技",
+      "theme": "AI/电子链",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 58,
+          "high": 61
+        },
+        {
+          "tier": 2,
+          "low": 54,
+          "high": 56
+        },
+        {
+          "tier": 3,
+          "low": 50,
+          "high": 52
+        }
+      ],
+      "valuationFocus": "PE / Forward PE、历史分位、FCF",
+      "fundamentalFocus": "AI服务器/机柜、GPU/ASIC、CSP资本开支、毛利率、OCF",
+      "vetoRisk": "CSP Capex下修且订单、现金流同步转弱",
+      "specialChecks": {},
+      "provisional": false
+    },
+    {
+      "code": "002475",
+      "name": "立讯精密",
+      "category": "成长科技",
+      "theme": "AI/电子链",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 51,
+          "high": 54
+        },
+        {
+          "tier": 2,
+          "low": 47,
+          "high": 49
+        },
+        {
+          "tier": 3,
+          "low": 43,
+          "high": 45
+        }
+      ],
+      "valuationFocus": "PE、PEG、FCF、历史分位",
+      "fundamentalFocus": "消费电子、数据中心、汽车、核心客户、汇率、OCF",
+      "vetoRisk": "收入高增但扣非与现金流持续弱化",
+      "specialChecks": {},
+      "provisional": false
+    },
+    {
+      "code": "600584",
+      "name": "长电科技",
+      "category": "成长科技",
+      "theme": "AI/电子链",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 68,
+          "high": 71
+        },
+        {
+          "tier": 2,
+          "low": 62,
+          "high": 65
+        },
+        {
+          "tier": 3,
+          "low": 56,
+          "high": 60
+        }
+      ],
+      "valuationFocus": "Forward PE、PB、ROIC",
+      "fundamentalFocus": "先进封装、FCBGA、Chiplet、利用率、毛利率、OCF",
+      "vetoRisk": "估值仍高且利用率、盈利增速下修",
+      "specialChecks": {},
+      "provisional": false
+    },
+    {
+      "code": "000938",
+      "name": "紫光股份",
+      "category": "成长科技",
+      "theme": "AI/电子链",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 32,
+          "high": 34
+        },
+        {
+          "tier": 2,
+          "low": 29,
+          "high": 31
+        },
+        {
+          "tier": 3,
+          "low": 26,
+          "high": 28
+        }
+      ],
+      "valuationFocus": "PE、EV/EBITDA、杠杆",
+      "fundamentalFocus": "新华三服务器/交换机/存储、智算需求、毛利率、财务费用、收购整合",
+      "vetoRisk": "高杠杆且现金流、整合收益未兑现",
+      "specialChecks": {},
+      "provisional": false
+    },
+    {
+      "code": "002837",
+      "name": "英维克",
+      "category": "成长科技",
+      "theme": "AI/电子链",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 50,
+          "high": 53
+        },
+        {
+          "tier": 2,
+          "low": 45,
+          "high": 48
+        },
+        {
+          "tier": 3,
+          "low": 40,
+          "high": 43
+        }
+      ],
+      "valuationFocus": "PE/PEG、PB、Forward PE",
+      "fundamentalFocus": "液冷、机房/机柜温控、海外、毛利率、OCF、研发、订单兑现",
+      "vetoRisk": "高估值未消化且利润增长低于收入",
+      "specialChecks": {},
+      "provisional": false
+    },
+    {
+      "code": "002352",
+      "name": "顺丰控股",
+      "category": "物流",
+      "theme": "物流",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 31,
+          "high": 33.5
+        },
+        {
+          "tier": 2,
+          "low": 28.5,
+          "high": 30.5
+        },
+        {
+          "tier": 3,
+          "low": 26,
+          "high": 28
+        }
+      ],
+      "valuationFocus": "PE、EV/EBITDA、FCF Yield、ROIC",
+      "fundamentalFocus": "速运收入、量与单票、国际供应链、时效件、Capex、FCF、股东回报",
+      "vetoRisk": "业务量增长但单票收益、FCF持续恶化",
+      "specialChecks": {},
+      "provisional": false
+    },
+    {
+      "code": "600089",
+      "name": "特变电工",
+      "category": "周期",
+      "theme": "周期资产",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 18,
+          "high": 19.5
+        },
+        {
+          "tier": 2,
+          "low": 16.5,
+          "high": 17.5
+        },
+        {
+          "tier": 3,
+          "low": 15,
+          "high": 16
+        }
+      ],
+      "valuationFocus": "标准化PE、PB、EV/EBITDA",
+      "fundamentalFocus": "输变电订单、煤炭、新能源工程、黄金、电站、OCF、减值",
+      "vetoRisk": "利润周期未止跌时禁止因低PE加仓",
+      "specialChecks": {
+        "cycle": "盈利周期已止跌，低估不依赖周期顶部利润"
+      },
+      "provisional": false
+    },
+    {
+      "code": "002131",
+      "name": "利欧股份",
+      "category": "盈利修复",
+      "theme": "卫星主题",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 3.8,
+          "high": 4.2
+        },
+        {
+          "tier": 2,
+          "low": 3.3,
+          "high": 3.6
+        },
+        {
+          "tier": 3,
+          "low": 2.8,
+          "high": 3.1
+        }
+      ],
+      "valuationFocus": "先确认盈利质量，再讨论估值",
+      "fundamentalFocus": "数字营销主业、扣非、OCF、投资收益、商誉、AI真实收入",
+      "vetoRisk": "扣非与OCF未改善时暂缓",
+      "specialChecks": {
+        "recovery": "扣非利润与经营现金流均已改善"
+      },
+      "provisional": false
+    },
+    {
+      "code": "603068",
+      "name": "博通集成",
+      "category": "成长科技",
+      "theme": "AI/电子链",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 36,
+          "high": 40
+        },
+        {
+          "tier": 2,
+          "low": 31,
+          "high": 34
+        },
+        {
+          "tier": 3,
+          "low": 26,
+          "high": 29
+        }
+      ],
+      "valuationFocus": "TTM/Forward PE、同业与历史分位",
+      "fundamentalFocus": "Wi-Fi 6/AIoT、BK7259、扣非利润、OCF、库存",
+      "vetoRisk": "高估值、负OCF或库存恶化，题材快于业绩兑现",
+      "specialChecks": {
+        "adjustedProfit": "扣非利润延续改善",
+        "cashRecovery": "经营现金流转正或显著改善",
+        "inventory": "库存可被订单消化",
+        "productRevenue": "Wi-Fi 6/AIoT产品已有可验证收入贡献",
+        "valuationCompression": "估值已经明显回落，且非盈利预测下修造成的假性低估"
+      },
+      "provisional": true
+    },
+    {
+      "code": "002142",
+      "name": "宁波银行",
+      "category": "银行",
+      "theme": "银行",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 31,
+          "high": 33
+        },
+        {
+          "tier": 2,
+          "low": 28.5,
+          "high": 30
+        },
+        {
+          "tier": 3,
+          "low": 26,
+          "high": 28
+        }
+      ],
+      "valuationFocus": "PB–ROE、PE、股息率",
+      "fundamentalFocus": "营收/利润、NIM、不良、关注类、拨备、中收、资本",
+      "vetoRisk": "ROE或资产质量明显恶化",
+      "specialChecks": {
+        "bankQuality": "ROE与资产质量稳定，已复核NIM、拨备和资本"
+      },
+      "provisional": false
+    },
+    {
+      "code": "600036",
+      "name": "招商银行",
+      "category": "银行",
+      "theme": "银行",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 37,
+          "high": 39
+        },
+        {
+          "tier": 2,
+          "low": 34,
+          "high": 36
+        },
+        {
+          "tier": 3,
+          "low": 31,
+          "high": 33
+        }
+      ],
+      "valuationFocus": "PB–ROE、PE、股息率",
+      "fundamentalFocus": "NIM、零售贷款质量、财富管理中收、ROE、拨备、分红",
+      "vetoRisk": "零售资产质量恶化且NIM持续压缩",
+      "specialChecks": {
+        "bankQuality": "零售资产质量及ROE稳定，NIM压缩风险已复核"
+      },
+      "provisional": false
+    },
+    {
+      "code": "601022",
+      "name": "宁波远洋",
+      "category": "周期",
+      "theme": "周期资产",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 7.6,
+          "high": 8.0
+        },
+        {
+          "tier": 2,
+          "low": 7.0,
+          "high": 7.4
+        },
+        {
+          "tier": 3,
+          "low": 6.4,
+          "high": 6.8
+        }
+      ],
+      "valuationFocus": "PB、EV/EBITDA、标准化PE",
+      "fundamentalFocus": "运价、运量、船队扩张、OCF、分红、定增摊薄与协同",
+      "vetoRisk": "运价下行与新运力投放导致盈利、现金流继续下修",
+      "specialChecks": {
+        "cycle": "运价、盈利周期与新增运力影响已确认稳定"
+      },
+      "provisional": false
+    },
+    {
+      "code": "517400",
+      "name": "黄金股ETF国泰",
+      "category": "黄金矿股ETF",
+      "theme": "黄金相关资产",
+      "bands": [
+        {
+          "tier": 1,
+          "low": 1.6,
+          "high": 1.68
+        },
+        {
+          "tier": 2,
+          "low": 1.45,
+          "high": 1.55
+        },
+        {
+          "tier": 3,
+          "low": 1.3,
+          "high": 1.4
+        }
+      ],
+      "valuationFocus": "指数PE/PB、历史分位、折溢价",
+      "fundamentalFocus": "金价、美元、实际利率、矿企产量/成本/利润/OCF、规模与跟踪误差",
+      "vetoRisk": "金价趋势与矿企盈利同步恶化",
+      "specialChecks": {
+        "goldExposure": "已合并黄金股、实物黄金及联接基金敞口并确认可承受"
+      },
+      "provisional": false
+    }
+  ]
+}

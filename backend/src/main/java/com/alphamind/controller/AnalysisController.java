@@ -1,12 +1,10 @@
 package com.alphamind.controller;
 
 import com.alphamind.model.dto.*;
-import com.alphamind.model.entity.AnalysisReportEntity;
 import com.alphamind.model.enums.AnalysisMode;
 import com.alphamind.model.enums.StrategyType;
-import com.alphamind.repository.AnalysisReportRepository;
-import com.alphamind.service.AnalysisReportMapper;
-import com.alphamind.service.PipelineOrchestrator;
+import com.alphamind.service.AnalysisHistoryService;
+import com.alphamind.service.AnalysisService;
 import com.alphamind.strategy.StrategyModeResolver;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
@@ -14,7 +12,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import reactor.core.publisher.Flux;
 
@@ -30,13 +27,10 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class AnalysisController {
 
-    private final PipelineOrchestrator pipelineOrchestrator;
+    private final AnalysisService analysisService;
     private final ObjectMapper objectMapper;
-    private final AnalysisReportRepository analysisReportRepository;
-    private final AnalysisReportMapper analysisReportMapper;
+    private final AnalysisHistoryService historyService;
     private final StrategyModeResolver strategyModeResolver;
-
-    private static final int MAX_HISTORY = 50;
 
     /**
      * SSE流式分析
@@ -61,7 +55,7 @@ public class AnalysisController {
         return Flux.create(emitter -> {
             try {
                 // 执行分析
-                AnalysisReportDTO report = pipelineOrchestrator.execute(
+                AnalysisReportDTO report = analysisService.analyze(
                     stockCode, finalStockName, strategy, resolvedMode,
                         event -> {
                             try {
@@ -78,9 +72,7 @@ public class AnalysisController {
                         }
                 );
 
-                // 先持久化，再按 result → complete 的顺序结束 SSE，避免客户端提前断流
-                saveToHistory(report);
-
+                // 用例已提交报告，再按 result → complete 的顺序结束 SSE。
                 try {
                     String resultJson = objectMapper.writeValueAsString(
                             ApiResponse.success("分析完成", report));
@@ -112,7 +104,7 @@ public class AnalysisController {
                 } catch (Exception ex) {
                     // ignore
                 }
-                emitter.error(e);
+                emitter.complete();
             }
         });
     }
@@ -125,7 +117,7 @@ public class AnalysisController {
         log.info("收到同步分析请求: {}", request);
 
         try {
-            AnalysisReportDTO report = pipelineOrchestrator.execute(
+            AnalysisReportDTO report = analysisService.analyze(
                     request.getStockCode(),
                     request.getStockCode(), // 使用code作为name的默认值
                     request.getStrategy() != null ? request.getStrategy() : StrategyType.BALANCED,
@@ -134,7 +126,6 @@ public class AnalysisController {
                     null // 同步模式不需要回调
             );
 
-            saveToHistory(report);
             return ApiResponse.success("分析完成", report);
         } catch (Exception e) {
             log.error("分析失败: {}", request.getStockCode(), e);
@@ -146,37 +137,22 @@ public class AnalysisController {
      * 分析历史记录
      */
     @GetMapping("/history")
-    @Transactional(readOnly = true)
     public ApiResponse<List<AnalysisReportDTO>> getHistory(
             @RequestParam(required = false) String stockCode,
             @RequestParam(required = false, defaultValue = "20") int limit) {
 
-        List<AnalysisReportEntity> entities = stockCode != null
-                ? analysisReportRepository.findByStockCodeOrderByCreatedAtDesc(stockCode)
-                : analysisReportRepository.findTop50ByOrderByCreatedAtDesc();
-
-        List<AnalysisReportDTO> history = entities.stream()
-                .limit(Math.min(limit, MAX_HISTORY))
-                .map(analysisReportMapper::toDTO)
-                .toList();
-
-        return ApiResponse.success(history);
+        return ApiResponse.success(historyService.getRecent(stockCode, limit));
     }
 
-    private void saveToHistory(AnalysisReportDTO report) {
-        if (report == null) return;
-        try {
-            AnalysisReportEntity entity = analysisReportMapper.toEntity(report);
-            analysisReportRepository.save(entity);
-        } catch (Exception e) {
-            log.error("保存分析报告失败: id={}", report.getId(), e);
-        }
+    /** 按 ID 读取完整报告，不受最近历史列表数量限制。 */
+    @GetMapping("/{reportId}")
+    public ApiResponse<AnalysisReportDTO> getReport(@PathVariable String reportId) {
+        return historyService.getReport(reportId)
+                .map(ApiResponse::success)
+                .orElseGet(() -> ApiResponse.error(404, "报告不存在"));
     }
 
-    /**
-     * mode 优先级高于 enableDebate。
-     * 为兼容旧调用：当两者都未传时，默认 DEBATE（与旧默认 enableDebate=true 一致）。
-     */
+    /** mode 优先级高于 enableDebate，两者缺省时使用策略默认值。 */
     private AnalysisMode resolveMode(String mode, Boolean enableDebate, StrategyType strategy) {
         if (mode != null && !mode.isBlank()) {
             return AnalysisMode.fromValue(mode);

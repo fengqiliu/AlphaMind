@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 import java.util.function.Consumer;
 
@@ -44,6 +45,7 @@ public class PipelineOrchestrator {
 
         final AnalysisMode effectiveMode = mode != null ? mode : AnalysisMode.DEBATE;
         final boolean enableDebate = effectiveMode == AnalysisMode.DEBATE;
+        final StrategyType finalStrategy = strategy != null ? strategy : StrategyType.BALANCED;
 
         log.info("开始流水线分析: stockCode={}, strategy={}, mode={}, enableDebate={}",
             stockCode, strategy, effectiveMode, enableDebate);
@@ -52,7 +54,9 @@ public class PipelineOrchestrator {
                 .id(UUID.randomUUID().toString())
                 .stockCode(stockCode)
                 .stockName(stockName)
-                .createdAt(LocalDateTime.now())
+                .strategy(finalStrategy)
+                .mode(effectiveMode)
+                .createdAt(LocalDateTime.now().truncatedTo(ChronoUnit.MICROS))
                 .build();
 
         // ── 历史上下文召回（向量记忆）────────────────────────────────────────
@@ -65,9 +69,6 @@ public class PipelineOrchestrator {
         }
 
         try {
-            // 设置策略
-            final StrategyType finalStrategy = strategy != null ? strategy : StrategyType.BALANCED;
-
             // Stage 1: Market Agent - 采集行情数据
             emit(eventConsumer, AnalysisStage.MARKET, "正在采集行情数据...");
             initializeAgentContext(marketAgent, report, finalStrategy, contextSummary);

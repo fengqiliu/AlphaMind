@@ -1,7 +1,8 @@
 import { test, expect } from "@playwright/test";
 
 const integrationEnabled = process.env.ALPHAMIND_E2E_INTEGRATION === "1";
-const backendOrigin = process.env.ALPHAMIND_BACKEND_ORIGIN ?? "http://localhost:8080";
+const backendOrigin =
+  process.env.ALPHAMIND_BACKEND_ORIGIN ?? "http://localhost:8080";
 
 test.describe("真实前后端分析链路", () => {
   test.skip(
@@ -14,7 +15,9 @@ test.describe("真实前后端分析链路", () => {
     page,
     request,
   }) => {
-    const healthResponse = await request.get(`${backendOrigin}/actuator/health`);
+    const healthResponse = await request.get(
+      `${backendOrigin}/actuator/health`,
+    );
     const healthPayload = await healthResponse.json();
     // Redis 是可选依赖；健康端点可能因 Redis DOWN 返回 503，但 PostgreSQL 必须可用。
     expect(healthPayload.components?.db?.status).toBe("UP");
@@ -22,7 +25,9 @@ test.describe("真实前后端分析链路", () => {
     await page.goto("/");
 
     await page.getByPlaceholder("搜索股票代码或名称...").fill("600519");
-    await expect(page.getByRole("button", { name: /贵州茅台.*600519/ })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /贵州茅台.*600519/ }),
+    ).toBeVisible();
     const search = await request.get(
       `${backendOrigin}/api/v1/stocks/search?query=600519`,
     );
@@ -33,9 +38,7 @@ test.describe("真实前后端分析链路", () => {
       ]),
     );
 
-    await page
-      .getByRole("button", { name: /贵州茅台.*600519/ })
-      .click();
+    await page.getByRole("button", { name: /贵州茅台.*600519/ }).click();
     const startButton = page.getByRole("button", { name: "开始分析" });
     await expect(startButton).toBeEnabled();
 
@@ -56,9 +59,27 @@ test.describe("真实前后端分析链路", () => {
     await expect(page.getByText("入场价", { exact: true })).toBeVisible();
     await expect(page.getByText("建议持仓周期", { exact: true })).toBeVisible();
     await expect(page.getByRole("button", { name: "开始分析" })).toBeEnabled();
+    await expect(
+      page.getByRole("img", { name: "股票日 K 线、移动平均线与成交量图" }),
+    ).toBeVisible();
+    await page.screenshot({
+      path: "../output/playwright/real-analysis-result.png",
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 390, height: 900 });
+    await expect.poll(() => page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    )).toBe(true);
+    await page.screenshot({
+      path: "../output/playwright/real-analysis-mobile.png",
+      fullPage: true,
+    });
+    await page.setViewportSize({ width: 1280, height: 900 });
 
     await page.getByRole("link", { name: /历史记录/ }).click();
-    await expect(page.getByText("贵州茅台", { exact: true }).first()).toBeVisible({
+    await expect(
+      page.getByText("贵州茅台", { exact: true }).first(),
+    ).toBeVisible({
       timeout: 30_000,
     });
     const history = await request.get(
@@ -71,7 +92,11 @@ test.describe("真实前后端分析链路", () => {
         expect.objectContaining({ stockCode: "600519", stockName: "贵州茅台" }),
       ]),
     );
-    await expect(page.getByText("贵州茅台", { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("600519", { exact: true }).first()).toBeVisible();
+    await expect(
+      page.getByText("贵州茅台", { exact: true }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByText("600519", { exact: true }).first(),
+    ).toBeVisible();
   });
 });

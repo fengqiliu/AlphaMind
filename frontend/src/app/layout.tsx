@@ -14,7 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
-      <body className="grid-bg noise-overlay">
+      <body>
         <AppShell>{children}</AppShell>
       </body>
     </html>

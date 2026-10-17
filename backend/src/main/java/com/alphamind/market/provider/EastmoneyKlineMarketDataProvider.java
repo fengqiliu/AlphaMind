@@ -115,6 +115,6 @@ public class EastmoneyKlineMarketDataProvider implements MarketDataProvider {
     }
 
     private static String toEastmoneySecId(String stockCode) {
-        return (stockCode.startsWith("6") || stockCode.startsWith("9") ? "1." : "0.") + stockCode;
+        return (stockCode.startsWith("5") || stockCode.startsWith("6") || stockCode.startsWith("9") ? "1." : "0.") + stockCode;
     }
 }

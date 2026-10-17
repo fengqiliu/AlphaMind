@@ -1,5 +1,11 @@
 import type { LucideIcon } from "lucide-react";
-import { ChartLine, History, MessageSquare, Star } from "lucide-react";
+import {
+  ChartLine,
+  History,
+  MessageSquare,
+  Star,
+  ShieldCheck,
+} from "lucide-react";
 
 export interface AppNavItem {
   href: string;
@@ -9,6 +15,12 @@ export interface AppNavItem {
 }
 
 export const APP_NAV_ITEMS: AppNavItem[] = [
+  {
+    href: "/investment-model",
+    label: "投资模型",
+    desc: "个人投资复核",
+    icon: ShieldCheck,
+  },
   {
     href: "/",
     label: "智能分析",

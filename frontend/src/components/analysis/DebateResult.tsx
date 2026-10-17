@@ -59,12 +59,19 @@ const signalConfig = {
   [SignalType.HOLD]: "text-[var(--neutral)]",
 };
 
-export function DebateResult({ judgment, debateViews, className }: DebateResultProps) {
+export function DebateResult({
+  judgment,
+  debateViews,
+  className,
+}: DebateResultProps) {
   const position = positionConfig[judgment.finalPosition];
   const PositionIcon = position.icon;
   const totalVotes = Math.max(
     1,
-    Object.values(judgment.voteBreakdown).reduce((sum, votes) => sum + votes, 0),
+    Object.values(judgment.voteBreakdown).reduce(
+      (sum, votes) => sum + votes,
+      0,
+    ),
   );
 
   return (
@@ -244,6 +251,33 @@ function DebateViewCard({ view }: { view: DebateView }) {
       <p className="text-sm text-[var(--text-secondary)] leading-relaxed mb-3">
         {view.view}
       </p>
+      {(view.reasons?.length > 0 || view.attackPoints?.length) && (
+        <details className="mb-3 text-xs text-[var(--text-secondary)]">
+          <summary className="cursor-pointer py-1 font-medium">
+            查看支撑理由与反驳
+          </summary>
+          {view.reasons?.length > 0 && (
+            <div className="mt-2">
+              <p className="mb-1 font-medium">支撑理由</p>
+              <ul className="list-disc space-y-1 pl-4">
+                {view.reasons.map((reason, i) => (
+                  <li key={i}>{reason}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {view.attackPoints?.length ? (
+            <div className="mt-3">
+              <p className="mb-1 font-medium">反驳观点</p>
+              <ul className="list-disc space-y-1 pl-4">
+                {view.attackPoints.map((point, i) => (
+                  <li key={i}>{point}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </details>
+      )}
       {view.keyPoints && view.keyPoints.length > 0 && (
         <ul className="space-y-1">
           {view.keyPoints.map((point, i) => (

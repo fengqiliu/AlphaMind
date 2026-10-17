@@ -60,7 +60,7 @@ test.describe("历史记录页加载", () => {
     await expect(page.getByRole("heading", { name: "历史记录" })).toBeVisible();
   });
 
-  test("应该显示 ANALYSIS HISTORY & REPORTS 副标题", async ({ page }) => {
+  test("应该显示历史研究说明", async ({ page }) => {
     await page.route("**/analysis/history*", (route) =>
       route.fulfill({
         status: 200,
@@ -70,7 +70,7 @@ test.describe("历史记录页加载", () => {
     );
     await page.goto("/history");
     await expect(
-      page.getByText("ANALYSIS HISTORY & REPORTS"),
+      page.getByText("回到当时的判断，查看完整依据与多空观点。"),
     ).toBeVisible();
   });
 });
@@ -99,9 +99,9 @@ test.describe("空历史记录状态", () => {
       }),
     );
     await page.goto("/history");
-    await expect(
-      page.getByText("开始分析股票后将自动保存历史"),
-    ).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("开始分析股票后将自动保存历史")).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test("记录数显示应为 0 条记录", async ({ page }) => {

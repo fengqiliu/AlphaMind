@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 
 export interface SSEOptions {
   onMessage: (event: string, data: unknown) => void;
@@ -25,37 +25,39 @@ export function useSSE() {
     const es = new EventSource(url);
     eventSourceRef.current = es;
 
+    const isCurrent = () => eventSourceRef.current === es;
     es.onopen = () => {
-      options.onOpen?.();
+      if (isCurrent()) options.onOpen?.();
     };
 
     // 监听具名事件
-    const eventTypes = ["stage", "data", "complete", "error", "message", "result"];
+    const eventTypes = [
+      "stage",
+      "data",
+      "complete",
+      "error",
+      "message",
+      "result",
+    ];
     eventTypes.forEach((eventType) => {
       es.addEventListener(eventType, (e: MessageEvent) => {
+        // 原生 error 是传输错误；具名 error 的 MessageEvent 携带业务错误。
+        if (!isCurrent() || !(e instanceof MessageEvent)) return;
+        let parsed: unknown = e.data;
         try {
-          const parsed = JSON.parse(e.data);
-          options.onMessage(eventType, parsed);
+          parsed = JSON.parse(e.data);
         } catch {
-          options.onMessage(eventType, e.data);
+          /* 非 JSON 消息保留原文。 */
         }
+        options.onMessage(eventType, parsed);
       });
     });
 
-    // 默认消息事件（无具名event时）
-    es.onmessage = (e: MessageEvent) => {
-      try {
-        const parsed = JSON.parse(e.data);
-        options.onMessage("message", parsed);
-      } catch {
-        options.onMessage("message", e.data);
-      }
-    };
-
     es.onerror = (e: Event) => {
-      options.onError?.(e);
+      if (!isCurrent() || e instanceof MessageEvent) return;
       es.close();
       eventSourceRef.current = null;
+      options.onError?.(e);
     };
 
     return es;
@@ -67,6 +69,8 @@ export function useSSE() {
       eventSourceRef.current = null;
     }
   }, []);
+
+  useEffect(() => disconnect, [disconnect]);
 
   return { connect, disconnect };
 }

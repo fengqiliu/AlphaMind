@@ -28,7 +28,9 @@ test.describe("侧边栏导航", () => {
   test("应该显示 AlphaMind Logo", async ({ page }) => {
     await page.goto("/");
     await expect(page.locator("aside")).toBeVisible();
-    await expect(page.getByText("AlphaMind")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "AlphaMind 首页" }),
+    ).toBeVisible();
   });
 
   test("应该显示所有导航链接", async ({ page }) => {
@@ -43,9 +45,7 @@ test.describe("侧边栏导航", () => {
 test.describe("股票搜索框", () => {
   test("应该显示搜索输入框", async ({ page }) => {
     await page.goto("/");
-    await expect(
-      page.getByPlaceholder("搜索股票代码或名称..."),
-    ).toBeVisible();
+    await expect(page.getByPlaceholder("搜索股票代码或名称...")).toBeVisible();
   });
 
   test("可以在搜索框中输入文字", async ({ page }) => {
@@ -66,15 +66,17 @@ test.describe("策略和模式选择器", () => {
 
   test("策略选择器应包含保守、平衡、激进策略", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("🎯 保守策略")).toBeVisible();
-    await expect(page.getByText("⚖️ 平衡策略")).toBeVisible();
-    await expect(page.getByText("🚀 激进策略")).toBeVisible();
+    await expect(page.getByRole("option", { name: "保守策略" })).toBeAttached();
+    await expect(page.getByRole("option", { name: "平衡策略" })).toBeAttached();
+    await expect(page.getByRole("option", { name: "激进策略" })).toBeAttached();
   });
 
   test("分析模式选择器应包含流水线和辩论模式", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("🔄 流水线模式")).toBeVisible();
-    await expect(page.getByText("⚔️ 辩论模式")).toBeVisible();
+    await expect(
+      page.getByRole("option", { name: "流水线模式" }),
+    ).toBeAttached();
+    await expect(page.getByRole("option", { name: "辩论模式" })).toBeAttached();
   });
 
   test("默认策略为平衡策略", async ({ page }) => {

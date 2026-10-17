@@ -21,11 +21,13 @@ export function KLineChart({ data, className }: KLineChartProps) {
     const chart = chartInstance.current;
 
     // 主题颜色
-    const bullish = "#00ff88";
-    const bearish = "#ff3366";
-    const accent = "#00f0ff";
-    const textColor = "#a1a1aa";
-    const bgColor = "#12141a";
+    const theme = getComputedStyle(document.documentElement);
+    const bullish = theme.getPropertyValue("--bullish").trim();
+    const bearish = theme.getPropertyValue("--bearish").trim();
+    const accent = theme.getPropertyValue("--accent").trim();
+    const textColor = theme.getPropertyValue("--text-secondary").trim();
+    const bgColor = theme.getPropertyValue("--bg-secondary").trim();
+    const borderColor = theme.getPropertyValue("--border").trim();
 
     const option: echarts.EChartsOption = {
       backgroundColor: "transparent",
@@ -80,7 +82,7 @@ export function KLineChart({ data, className }: KLineChartProps) {
           data: data.dates,
           gridIndex: 0,
           axisLabel: { show: false },
-          axisLine: { lineStyle: { color: "#ffffff10" } },
+          axisLine: { lineStyle: { color: borderColor } },
         },
         {
           type: "category",
@@ -91,7 +93,7 @@ export function KLineChart({ data, className }: KLineChartProps) {
             color: textColor,
             fontFamily: "'JetBrains Mono', monospace",
           },
-          axisLine: { lineStyle: { color: "#ffffff10" } },
+          axisLine: { lineStyle: { color: borderColor } },
           splitLine: { show: false },
         },
       ],
@@ -106,7 +108,7 @@ export function KLineChart({ data, className }: KLineChartProps) {
             formatter: (value: number) => value.toFixed(0),
           },
           axisLine: { show: false },
-          splitLine: { lineStyle: { color: "#ffffff08" } },
+          splitLine: { lineStyle: { color: borderColor, type: "dashed" } },
         },
         {
           scale: true,
@@ -200,11 +202,11 @@ export function KLineChart({ data, className }: KLineChartProps) {
 
     chart.setOption(option);
 
-    const handleResize = () => chart.resize();
-    window.addEventListener("resize", handleResize);
+    const observer = new ResizeObserver(() => chart.resize());
+    observer.observe(chartRef.current);
 
     return () => {
-      window.removeEventListener("resize", handleResize);
+      observer.disconnect();
       chart.dispose();
     };
   }, [data]);
@@ -212,7 +214,9 @@ export function KLineChart({ data, className }: KLineChartProps) {
   return (
     <div
       ref={chartRef}
-      className={cn("w-full h-full min-h-[400px]", className)}
+      role="img"
+      aria-label="股票日 K 线、移动平均线与成交量图"
+      className={cn("w-full min-h-[360px]", className)}
     />
   );
 }

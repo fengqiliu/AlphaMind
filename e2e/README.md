@@ -2,6 +2,22 @@
 
 普通 E2E 用例会启动前端开发服务器，并对后端接口做 mock。真实前后端链路测试不拦截任何接口，需要先启动可连接 PostgreSQL 的 Spring Boot 后端，再执行：
 
+本机没有 Playwright 自带 Chromium 时，可用已安装的 Edge 运行：
+
+```bash
+PLAYWRIGHT_CHANNEL=msedge npx playwright test
+```
+
+`workspace.spec.ts` 检查 390 / 768 / 1440 像素布局，并将截图保存到 `output/playwright/`。
+
+`history-detail.spec.ts` 使用测试数据验证历史详情、刷新恢复、键盘操作、JSON/Markdown 导出及手机布局。`real-report-history.integration.spec.ts` 在启用真实集成后验证 PIPELINE 与 DEBATE 报告的首次结果、数据库重载、历史接口和浏览器 JSON 下载完整一致。
+
+`investment-model.spec.ts` 验证个人模型表单、13 标的、缺证据状态及手机布局；`real-investment-model.integration.spec.ts` 使用真实行情与数据库验证个人模型报告、刷新恢复及 JSON/Markdown/PDF 导出。新迁移 V3 必须已执行。
+
+`review-reuse.spec.ts` 检查历史证据载入、日期保留、当前风险重置及读取失败不清空表单；`real-review-reuse.integration.spec.ts` 使用真实数据库验证最新有来源查询、跳过空复核/通用分析、来源报告不变和新报告回溯。需执行 V4 迁移。
+
+旧库兼容性测试额外要求 `ALPHAMIND_E2E_LEGACY_FIXTURE=1`，仅用于已在 V1 schema 中准备 `legacy-report-v1` 样本、随后升级至 V2 的隔离测试环境；普通环境不需要设置。
+
 ```bash
 # 终端 1：启动后端（需可连接 PostgreSQL，且能访问真实行情源）
 cd backend

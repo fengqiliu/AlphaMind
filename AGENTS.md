@@ -105,6 +105,8 @@ The `BaseAgent.llmCall()` follows a fallback chain: `LlmManager` (multi-model) �
 
 **Key Services** (`backend/src/main/java/com/alphamind/service/`):
 
+- `AnalysisService.java` - Shared synchronous/streaming use case; returns a report only after history commits
+- `AnalysisHistoryService.java` - Report persistence transactions and bounded database history queries
 - `PipelineOrchestrator.java` - Orchestrates the pipeline agent flow (Market → Technical → Sentiment → Portfolio)
 - `MemoryService.java` - Manages conversation history via Redis
 - `StockService.java` - Stock data operations
@@ -121,6 +123,8 @@ The `BaseAgent.llmCall()` follows a fallback chain: `LlmManager` (multi-model) �
 - `TradeSignalDTO.java` - Buy/Sell/Hold recommendation with entry/exit prices
 - `JudgmentDTO.java` - Debate arbitration result
 
+Report `strategy` and `mode` contain actual execution enum names. Legacy reports without reliable metadata omit these fields. Preserve `debateViews`, confidence explanations and `finalSignal` on save/read/export; the final signal must not be overwritten by the trade plan's type. Add migrations after V1 rather than modifying applied migrations.
+
 ### Frontend (Next.js 16 + App Router)
 
 **Routing** (`frontend/src/app/`):
@@ -129,6 +133,7 @@ The `BaseAgent.llmCall()` follows a fallback chain: `LlmManager` (multi-model) �
 - `chat/` - Chat interface
 - `history/` - Analysis history
 - `watchlist/` - Watchlist management
+- `investment-model/` - Personal v1.1 decision gates, evidence review and risk budget
 
 **Components** (`frontend/src/components/`):
 
@@ -140,6 +145,8 @@ The `BaseAgent.llmCall()` follows a fallback chain: `LlmManager` (multi-model) �
 **State Management** (`frontend/src/stores/`):
 
 - Zustand stores for analysis state, chat sessions, and UI state
+- `useAnalysisSession` owns analysis connection/cancellation/stock selection. Apply final reports atomically through `applyReport`; only a `result` event marks success. A `complete` event alone must not close the connection.
+- `useSSE` filters stale connection events and distinguishes business `error` messages from transport errors. Do not add another EventSource owner in the analysis page.
 
 **API Client** (`frontend/src/api/`):
 
@@ -154,6 +161,12 @@ GET /api/v1/analysis/stream?stockCode=600519&strategy=BALANCED&enableDebate=true
 ```
 
 Events: `stage` (MARKET/TECHNICAL/SENTIMENT/PORTFOLIO), `complete`, `result`
+
+Report lookup: `GET /api/v1/analysis/{reportId}`. History detail links use `/history?report={reportId}` and are independent of the recent-list limit.
+
+Personal model: `GET /api/v1/investment-model`, `POST /api/v1/investment-model/analyze` with `{stockCode, review?}`. This dedicated deterministic use case does not call LLMs or trade APIs. Unknown/expired evidence never passes; do not use document holdings as current account data. Personal reports have nullable forecast/holding/confidence fields and render/export through `personalModel`, not the generic trade-plan cards. See `docs/个人投资模型接入说明.md` for source fidelity and conservative interpretations.
+
+Review reuse: `GET /api/v1/investment-model/reviews/{stockCode}/latest` derives a draft from the latest sourced personal report. Preserve source dates, reset current valuation/logic/timing/leverage/portfolio decisions, and never mutate the source report. Validate `review.sourceReportId` against stock and model version before fetching market data. V4 adds a matching partial lookup index.
 
 **Chat Session**:
 
@@ -175,8 +188,10 @@ GET  /api/v1/chat/stream/{sessionId}?message={msg}&agentType=PORTFOLIO
 
 ## Important Notes
 
-- Before modifying frontend code, read `frontend/AGENTS.md` and `frontend/AGENTS.md` — Next.js 16 has breaking changes from earlier versions
-- Backend has test infrastructure configured but no committed test classes (`mvn test` is mainly a compile and Surefire baseline check)
+- Before modifying frontend code, read `frontend/AGENTS.md` and the relevant guides in `frontend/node_modules/next/dist/docs/` — Next.js 16 has breaking changes from earlier versions
+- Backend has committed JUnit/Mockito tests; run `mvn test` for changes to backend behavior. A placeholder health test is not runtime health verification.
 - Redis is optional; `MemoryService` falls back to local in-memory storage when Redis is unavailable
-- Local backend development uses `dev` Spring profile — `application-dev.yml` disables production DB auto-configuration
-- Analysis history uses in-memory deque (most recent 50); chat history uses Redis with in-memory fallback
+- Local backend development uses `dev` Spring profile and requires PostgreSQL database `alphamind_dev`; Flyway runs and Hibernate validates the schema.
+- Analysis history is PostgreSQL-backed; queries are capped at 50 rows at the database level. Chat history uses Redis with in-memory fallback and database persistence.
+- The frontend uses a shared light palette in `globals.css`; keep chart colors in sync with CSS variables. Never display invented live prices, connection health, or confidence values.
+- Development scope and remaining priorities are tracked in `docs/开发计划.md`.

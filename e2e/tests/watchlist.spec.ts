@@ -37,7 +37,7 @@ test.describe("自选股页加载", () => {
       }),
     );
     await page.goto("/watchlist");
-    await expect(page.getByRole("heading", { name: "自选股" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "自选股", exact: true })).toBeVisible();
   });
 
   test("应该显示 PERSONAL WATCHLIST MANAGEMENT 副标题", async ({ page }) => {

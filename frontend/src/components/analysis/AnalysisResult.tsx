@@ -15,7 +15,7 @@ import {
 
 interface AnalysisResultProps {
   signal: TradeSignal;
-  confidence: ConfidenceInterval;
+  confidence?: ConfidenceInterval;
   className?: string;
 }
 
@@ -82,7 +82,7 @@ export function AnalysisResult({
       </div>
 
       {/* Price Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <PriceCard
           label="入场价"
           value={signal.entryPrice}
@@ -120,7 +120,8 @@ export function AnalysisResult({
             目标空间
           </div>
           <div className="text-lg font-bold font-mono text-[var(--bullish)]">
-            {targetPercent >= 0 ? "+" : ""}{targetPercent.toFixed(2)}%
+            {targetPercent >= 0 ? "+" : ""}
+            {targetPercent.toFixed(2)}%
           </div>
         </div>
         <div className="h-10 w-px bg-[var(--border)]" />
@@ -138,7 +139,10 @@ export function AnalysisResult({
             盈亏比
           </div>
           <div className="text-lg font-bold font-mono text-[var(--accent)]">
-            {riskPercent > 0 ? (Math.abs(targetPercent) / riskPercent).toFixed(2) : "--"}:1
+            {riskPercent > 0
+              ? (Math.abs(targetPercent) / riskPercent).toFixed(2)
+              : "--"}
+            :1
           </div>
         </div>
       </div>
@@ -148,7 +152,13 @@ export function AnalysisResult({
         <div className="text-xs font-mono text-[var(--text-muted)] tracking-wider mb-3">
           综合置信度
         </div>
-        <ConfidenceBar confidence={confidence} />
+        {confidence ? (
+          <ConfidenceBar confidence={confidence} />
+        ) : (
+          <p className="text-xs text-[var(--text-muted)]">
+            本次报告未提供置信度
+          </p>
+        )}
       </div>
     </div>
   );

@@ -8,7 +8,7 @@ alphamind:
     fetch-real-data: ${FETCH_REAL_DATA:true}
     connect-timeout-ms: ${MARKET_CONNECT_TIMEOUT_MS:3000}
     read-timeout-ms: ${MARKET_READ_TIMEOUT_MS:5000}
-    history-days: ${MARKET_HISTORY_DAYS:60}
+    history-days: ${MARKET_HISTORY_DAYS:120}
     cache:
       fresh-ttl-seconds: ${MARKET_CACHE_FRESH_TTL_SECONDS:30}
       stale-max-age-seconds: ${MARKET_CACHE_STALE_MAX_AGE_SECONDS:86400}

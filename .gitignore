@@ -72,6 +72,8 @@ node_modules/
 coverage/
 playwright-report/
 test-results/
+.playwright-cli/
+/output/playwright/
 
 # Next.js build output
 .next/

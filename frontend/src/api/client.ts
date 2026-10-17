@@ -44,7 +44,9 @@ export const removeFromWatchlist = async (stockCode: string): Promise<void> => {
 export const getAnalysisReport = async (
   reportId: string,
 ): Promise<AnalysisReport> => {
-  const { data } = await api.get(`/analysis/${reportId}`);
+  const { data } = await api.get(`/analysis/${encodeURIComponent(reportId)}`);
+  if (data.code !== 200 || !data.data)
+    throw new Error(data.message || "报告加载失败");
   return data.data;
 };
 
@@ -76,7 +78,9 @@ export const clearChatSession = async (sessionId: string): Promise<void> => {
 export const getChatMessages = async (
   sessionId: string,
 ): Promise<ChatMessage[]> => {
-  const { data } = await api.get(`/chat/history/${encodeURIComponent(sessionId)}`);
+  const { data } = await api.get(
+    `/chat/history/${encodeURIComponent(sessionId)}`,
+  );
   return data.data;
 };
 

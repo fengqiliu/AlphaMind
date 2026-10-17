@@ -11,7 +11,7 @@ test.describe("应用路由", () => {
   test("自选股页面应该可访问", async ({ page }) => {
     await page.goto("/watchlist");
     await expect(
-      page.getByRole("heading", { name: "自选股" }),
+      page.getByRole("heading", { name: "自选股", exact: true }),
     ).toBeVisible();
   });
 });

@@ -8,7 +8,7 @@ const SEARCH_MOCK = {
 const SESSION_MOCK = {
   code: 200,
   message: "success",
-  data: "test-session-abc123",
+  data: { sessionId: "test-session-abc123" },
 };
 
 test.describe("AI 对话页加载", () => {
@@ -19,7 +19,9 @@ test.describe("AI 对话页加载", () => {
 
   test("应该显示 AI对话 标题文字", async ({ page }) => {
     await page.goto("/chat");
-    await expect(page.getByText("AI对话")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "AI对话", exact: true }),
+    ).toBeVisible();
   });
 
   test("应该显示 MULTI-AGENT CONVERSATION INTERFACE 副标题", async ({
@@ -73,7 +75,9 @@ test.describe("选择股票后的聊天界面", () => {
     await input.fill("茅台");
     await page.getByText("贵州茅台").first().click();
 
-    await expect(page.getByText("AI分析师")).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText("AI分析师", { exact: true })).toBeVisible({
+      timeout: 5000,
+    });
   });
 
   test("选择股票后应隐藏股票搜索引导区", async ({ page }) => {

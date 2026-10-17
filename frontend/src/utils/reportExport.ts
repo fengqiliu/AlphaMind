@@ -1,5 +1,7 @@
 import type { AnalysisReport, DebatePosition } from "@/types";
 import { SignalType } from "@/types";
+import { modeLabel, strategyLabel } from "@/utils/reportMetadata";
+import { personalModelMarkdown } from "@/utils/personalModelExport";
 
 function sanitizeFileName(input: string): string {
   return input
@@ -38,12 +40,15 @@ function triggerDownload(content: string, mimeType: string, fileName: string) {
 }
 
 export function reportToMarkdown(report: AnalysisReport): string {
+  if (report.personalModel) return personalModelMarkdown(report);
   const confidencePercent = `${(report.confidence.value * 100).toFixed(0)}%`;
   const createdAt = new Date(report.createdAt).toLocaleString("zh-CN");
   const lines = [
     `# ${report.stockName}（${report.stockCode}）分析报告`,
     "",
     `- 生成时间：${createdAt}`,
+    `- 投资策略：${strategyLabel(report.strategy)}`,
+    `- 分析模式：${modeLabel(report.mode)}`,
     `- 最终信号：${signalLabel(report.finalSignal)}`,
     `- 置信度：${confidencePercent}（${report.confidence.level}）`,
     "",
@@ -103,8 +108,33 @@ export function reportToMarkdown(report: AnalysisReport): string {
     );
 
     if (report.judgment.riskWarnings?.length) {
-      lines.push("", "### 风险提示", ...report.judgment.riskWarnings.map((r) => `- ${r}`));
+      lines.push(
+        "",
+        "### 风险提示",
+        ...report.judgment.riskWarnings.map((r) => `- ${r}`),
+      );
     }
+  }
+
+  if (report.debateViews?.length) {
+    lines.push("", "## 三方辩论观点");
+    report.debateViews.forEach((view) => {
+      lines.push(
+        "",
+        `### ${debateLabel(view.position)}`,
+        "",
+        view.view,
+        ...(view.reasons?.length
+          ? ["", "支撑理由：", ...view.reasons.map((item) => `- ${item}`)]
+          : []),
+        ...(view.keyPoints?.length
+          ? ["", "核心观察：", ...view.keyPoints.map((item) => `- ${item}`)]
+          : []),
+        ...(view.attackPoints?.length
+          ? ["", "反驳观点：", ...view.attackPoints.map((item) => `- ${item}`)]
+          : []),
+      );
+    });
   }
 
   return lines.join("\n");
@@ -112,17 +142,32 @@ export function reportToMarkdown(report: AnalysisReport): string {
 
 export function downloadReportJson(report: AnalysisReport) {
   const fileName = `${getBaseName(report)}.json`;
-  triggerDownload(JSON.stringify(report, null, 2), "application/json", fileName);
+  triggerDownload(
+    JSON.stringify(report, null, 2),
+    "application/json",
+    fileName,
+  );
 }
 
 export function downloadReportMarkdown(report: AnalysisReport) {
   const fileName = `${getBaseName(report)}.md`;
-  triggerDownload(reportToMarkdown(report), "text/markdown;charset=utf-8", fileName);
+  triggerDownload(
+    reportToMarkdown(report),
+    "text/markdown;charset=utf-8",
+    fileName,
+  );
 }
 
 // ─── PDF Export ────────────────────────────────────────────────────────────
 
 function buildReportHtml(report: AnalysisReport): string {
+  if (report.personalModel) {
+    const text = personalModelMarkdown(report)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+    return `<div style="width:714px;padding:40px;background:white;color:#192b35;font-family:'PingFang SC','Microsoft YaHei',sans-serif;"><pre style="font-family:inherit;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word;">${text}</pre></div>`;
+  }
   const signal = signalLabel(report.finalSignal);
   const signalColor =
     report.finalSignal === SignalType.BUY
@@ -152,6 +197,7 @@ function buildReportHtml(report: AnalysisReport): string {
           <div style="font-size:13px;color:#64748b;font-family:monospace;margin-top:4px;">
             ${report.stockCode} · AlphaMind 智能分析报告
           </div>
+          <div style="font-size:12px;color:#64748b;margin-top:6px;">${strategyLabel(report.strategy)} · ${modeLabel(report.mode)}</div>
         </div>
         <div style="text-align:right;">
           <div style="display:inline-block;padding:5px 14px;background:${signalColor};color:#fff;border-radius:20px;font-weight:700;font-size:15px;">${signal}</div>
@@ -197,12 +243,26 @@ function buildReportHtml(report: AnalysisReport): string {
   const changeSign = m.changePercent >= 0 ? "+" : "";
   const marketCells = [
     { label: "当前价", value: `¥${m.currentPrice.toFixed(2)}` },
-    { label: "涨跌幅", value: `${changeSign}${m.changePercent.toFixed(2)}%`, color: changeColor },
+    {
+      label: "涨跌幅",
+      value: `${changeSign}${m.changePercent.toFixed(2)}%`,
+      color: changeColor,
+    },
     { label: "成交量（手）", value: m.volume.toFixed(0) },
     { label: "换手率", value: `${m.turnoverRate.toFixed(2)}%` },
-    { label: "市值（亿）", value: m.marketCap === null ? "数据源未提供" : (m.marketCap / 1e8).toFixed(2) },
-    { label: "市盈率", value: m.pe === null ? "数据源未提供" : m.pe.toFixed(2) },
-    { label: "市净率", value: m.pb === null ? "数据源未提供" : m.pb.toFixed(2) },
+    {
+      label: "市值（亿）",
+      value:
+        m.marketCap === null ? "数据源未提供" : (m.marketCap / 1e8).toFixed(2),
+    },
+    {
+      label: "市盈率",
+      value: m.pe === null ? "数据源未提供" : m.pe.toFixed(2),
+    },
+    {
+      label: "市净率",
+      value: m.pb === null ? "数据源未提供" : m.pb.toFixed(2),
+    },
     { label: "52周高", value: `¥${m.high.toFixed(2)}` },
   ]
     .map(
@@ -244,15 +304,28 @@ function buildReportHtml(report: AnalysisReport): string {
     </div>`;
 
   const sentColor =
-    s.sentimentScore >= 0.6 ? "#22c55e" : s.sentimentScore >= 0.4 ? "#f59e0b" : "#ef4444";
+    s.sentimentScore >= 0.6
+      ? "#22c55e"
+      : s.sentimentScore >= 0.4
+        ? "#f59e0b"
+        : "#ef4444";
   const posRows = (s.positiveFactors ?? [])
-    .map((f) => `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${f}</div>`)
+    .map(
+      (f) =>
+        `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${f}</div>`,
+    )
     .join("");
   const negRows = (s.negativeFactors ?? [])
-    .map((f) => `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${f}</div>`)
+    .map(
+      (f) =>
+        `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${f}</div>`,
+    )
     .join("");
   const newsRows = (s.recentHeadlines ?? [])
-    .map((h) => `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${h}</div>`)
+    .map(
+      (h) =>
+        `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${h}</div>`,
+    )
     .join("");
   const sentiment = `
     <div style="${sectionStyle}">
@@ -274,7 +347,9 @@ function buildReportHtml(report: AnalysisReport): string {
       ${
         newsRows
           ? `<div style="margin-top:10px;"><div style="font-size:11px;color:#64748b;font-weight:700;margin-bottom:5px;">📰 最新资讯${
-              s.newsDataSource ? `（来源：${s.newsDataSource}${s.newsStale ? "，过期缓存" : ""}）` : ""
+              s.newsDataSource
+                ? `（来源：${s.newsDataSource}${s.newsStale ? "，过期缓存" : ""}）`
+                : ""
             }</div>${newsRows}</div>`
           : ""
       }
@@ -284,7 +359,10 @@ function buildReportHtml(report: AnalysisReport): string {
   if (report.judgment?.finalPosition) {
     const j = report.judgment;
     const warnings = (j.riskWarnings ?? [])
-      .map((w) => `<div style="font-size:12px;color:#374151;margin-bottom:2px;">· ${w}</div>`)
+      .map(
+        (w) =>
+          `<div style="font-size:12px;color:#374151;margin-bottom:2px;">· ${w}</div>`,
+      )
       .join("");
     judgment = `
       <div style="${sectionStyle}">
@@ -307,7 +385,12 @@ function buildReportHtml(report: AnalysisReport): string {
   if (report.debateViews?.length) {
     const rows = report.debateViews
       .map((dv) => {
-        const c = dv.position === "BULLISH" ? "#22c55e" : dv.position === "BEARISH" ? "#ef4444" : "#f59e0b";
+        const c =
+          dv.position === "BULLISH"
+            ? "#22c55e"
+            : dv.position === "BEARISH"
+              ? "#ef4444"
+              : "#f59e0b";
         return `<div style="background:#fff;padding:10px;border-radius:6px;border-left:3px solid ${c};margin-bottom:8px;">
           <div style="font-size:11px;font-weight:700;color:${c};margin-bottom:4px;">${debateLabel(dv.position)}</div>
           <div style="font-size:12px;color:#374151;line-height:1.5;">${dv.view}</div>
@@ -345,7 +428,8 @@ export async function downloadReportPdf(report: AnalysisReport): Promise<void> {
   ]);
 
   const wrapper = document.createElement("div");
-  wrapper.style.cssText = "position:absolute;left:-9999px;top:0;z-index:-1;overflow:visible;";
+  wrapper.style.cssText =
+    "position:absolute;left:-9999px;top:0;z-index:-1;overflow:visible;";
   wrapper.innerHTML = buildReportHtml(report);
   document.body.appendChild(wrapper);
 
@@ -358,7 +442,11 @@ export async function downloadReportPdf(report: AnalysisReport): Promise<void> {
       logging: false,
     });
 
-    const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
     const imgH = (canvas.height / canvas.width) * pageW;

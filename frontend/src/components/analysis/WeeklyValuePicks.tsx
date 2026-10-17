@@ -2,13 +2,20 @@
 
 import { Button } from "@/components/common/Button";
 import type { WeeklyStockRecommendation } from "@/types";
-import { ArrowRight, Gem, Target, TrendingDown, TrendingUp } from "lucide-react";
+import {
+  ArrowRight,
+  Gem,
+  Target,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 
 interface WeeklyValuePicksProps {
   picks: WeeklyStockRecommendation[];
   isLoading: boolean;
   error: string | null;
   onSelect: (pick: WeeklyStockRecommendation) => void;
+  onRetry?: () => void;
 }
 
 export function WeeklyValuePicks({
@@ -16,23 +23,24 @@ export function WeeklyValuePicks({
   isLoading,
   error,
   onSelect,
+  onRetry,
 }: WeeklyValuePicksProps) {
   const weekLabel = picks[0]?.weekLabel ?? "本周";
 
   return (
-    <section className="glass-card-glow p-5 animate-enter delay-75">
+    <section className="glass-card p-5 sm:p-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
         <div>
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <span className="w-1.5 h-5 bg-[var(--neutral)] rounded-full" />
-            每周低位价值股
+            每周精选观察
           </h2>
           <p className="text-sm text-[var(--text-muted)] mt-1">
-            {weekLabel} 严选 3 只估值与位置兼顾的观察标的
+            {weekLabel} · 从股票池发现值得进一步研究的标的
           </p>
         </div>
         <div className="text-xs font-mono text-[var(--text-muted)]">
-          基于价格分位、行业折价、板块价值属性综合评分
+          按样本股价、行业权重与涨跌幅排序
         </div>
       </div>
 
@@ -51,12 +59,30 @@ export function WeeklyValuePicks({
           ))}
         </div>
       ) : error ? (
-        <div className="rounded-2xl border border-[var(--bearish)]/30 bg-[var(--bearish-glow)] p-4 text-sm text-[var(--bearish)]">
+        <div
+          role="alert"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[var(--bearish-glow)] p-4 text-sm text-[var(--bearish)]"
+        >
           {error}
+          {onRetry && (
+            <Button variant="outline" size="sm" onClick={onRetry}>
+              重新加载
+            </Button>
+          )}
         </div>
       ) : picks.length === 0 ? (
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-tertiary)] p-4 text-sm text-[var(--text-muted)]">
-          本周暂未生成推荐，请稍后再试。
+          暂无可用观察标的，行情恢复后可重新加载。
+          {onRetry && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-2"
+              onClick={onRetry}
+            >
+              重新加载
+            </Button>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -108,9 +134,21 @@ export function WeeklyValuePicks({
                 </p>
 
                 <div className="grid grid-cols-3 gap-3">
-                  <ScoreBadge label="综合" value={pick.compositeScore} accent="text-[var(--accent)]" />
-                  <ScoreBadge label="低位" value={pick.lowPositionScore} accent="text-[var(--neutral)]" />
-                  <ScoreBadge label="价值" value={pick.valueScore} accent="text-[var(--bullish)]" />
+                  <ScoreBadge
+                    label="综合"
+                    value={pick.compositeScore}
+                    accent="text-[var(--accent)]"
+                  />
+                  <ScoreBadge
+                    label="低位"
+                    value={pick.lowPositionScore}
+                    accent="text-[var(--neutral)]"
+                  />
+                  <ScoreBadge
+                    label="价值"
+                    value={pick.valueScore}
+                    accent="text-[var(--bullish)]"
+                  />
                 </div>
 
                 <div className="rounded-xl bg-[var(--bg-secondary)]/80 p-3 space-y-2">

@@ -38,6 +38,13 @@ public class AnalysisReportEntity {
     @Builder.Default
     private Boolean enableDebate = true;
 
+    /** 实际执行模式；null 表示旧报告没有可靠的执行配置。 */
+    @Column(name = "analysis_mode", length = 20)
+    private String analysisMode;
+
+    @Column(name = "final_signal_type", length = 10)
+    private String finalSignalType;
+
     // 交易信号
     @Column(name = "signal_type", length = 10)
     private String signalType;
@@ -64,6 +71,9 @@ public class AnalysisReportEntity {
     @Column(name = "confidence_level", length = 10)
     private String confidenceLevel;
 
+    @Column(name = "confidence_explanation", columnDefinition = "TEXT")
+    private String confidenceExplanation;
+
     // jsonb 字段 - 完整分析数据（Hibernate 6 原生 JSON 类型）
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "market_data", columnDefinition = "jsonb")
@@ -80,6 +90,14 @@ public class AnalysisReportEntity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "judgment", columnDefinition = "jsonb")
     private Object judgment;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "debate_views", columnDefinition = "jsonb")
+    private Object debateViews;
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "personal_model", columnDefinition = "jsonb")
+    private Object personalModel;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     @Builder.Default

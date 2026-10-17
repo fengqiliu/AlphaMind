@@ -21,6 +21,14 @@ public interface AnalysisReportRepository extends JpaRepository<AnalysisReportEn
 
     Optional<AnalysisReportEntity> findFirstByStockCodeOrderByCreatedAtDesc(String stockCode);
 
+    @Query(value = """
+            SELECT * FROM analysis_reports
+            WHERE stock_code = :stockCode AND personal_model IS NOT NULL
+              AND (personal_model #>> '{evidence,evidenceSource}') ~ '[^[:space:]　]'
+            ORDER BY created_at DESC, id DESC LIMIT 1
+            """, nativeQuery = true)
+    Optional<AnalysisReportEntity> findLatestPersonalReview(@Param("stockCode") String stockCode);
+
     Page<AnalysisReportEntity> findByStockCode(String stockCode, Pageable pageable);
 
     List<AnalysisReportEntity> findByCreatedAtAfterOrderByCreatedAtDesc(OffsetDateTime after);

@@ -144,7 +144,7 @@ test.describe("分析流程触发", () => {
     expect(request.url()).toContain("stockCode=600519");
   });
 
-  test("开始分析后开始分析按钮应变为停止分析", async ({ page }) => {
+  test("传输连接关闭后退出分析并允许重试", async ({ page }) => {
     await page.route("**/stocks/search*", (route) =>
       route.fulfill({
         status: 200,
@@ -152,7 +152,7 @@ test.describe("分析流程触发", () => {
         body: JSON.stringify(SEARCH_MOCK),
       }),
     );
-    // Keep SSE connection open to maintain "analyzing" state
+    // 有限响应体会触发 EventSource 的传输断开，不能当作保持连接。
     await page.route("**/analysis/stream*", (route) =>
       route.fulfill({
         status: 200,
@@ -160,7 +160,7 @@ test.describe("分析流程触发", () => {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache",
         },
-        body: "event: stage\ndata: {\"stage\":\"MARKET\"}\n\n",
+        body: 'event: stage\ndata: {"stage":"MARKET"}\n\n',
       }),
     );
 
@@ -170,7 +170,8 @@ test.describe("分析流程触发", () => {
     await page.getByRole("button", { name: /开始分析/ }).click();
 
     await expect(
-      page.getByRole("button", { name: /停止分析/ }),
-    ).toBeVisible({ timeout: 5000 });
+      page.getByRole("alert").filter({ hasText: "连接分析服务失败" }),
+    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "开始分析" })).toBeEnabled();
   });
 });

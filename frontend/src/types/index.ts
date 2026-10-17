@@ -145,18 +145,18 @@ export interface TechnicalIndicators {
 
 // 舆情数据（与后端 SentimentDataDTO 字段对应）
 export interface SentimentData {
-  sentimentScore: number;        // 综合评分 0~1
-  sentimentTrend: string;        // 趋势描述
-  positiveFactors: string[];     // 正面因素列表
-  negativeFactors: string[];     // 负面因素列表
+  sentimentScore: number; // 综合评分 0~1
+  sentimentTrend: string; // 趋势描述
+  positiveFactors: string[]; // 正面因素列表
+  negativeFactors: string[]; // 负面因素列表
   newsCountBySource?: Record<string, number> | null; // 各来源新闻数量（新闻源不可用时为 null）
-  mediaAttention: number;        // 媒体关注度 0~1
-  analysisSummary: string;       // 舆情摘要
-  aiSummary?: string;            // LLM 生成摘要（可选）
+  mediaAttention: number; // 媒体关注度 0~1
+  analysisSummary: string; // 舆情摘要
+  aiSummary?: string; // LLM 生成摘要（可选）
   recentHeadlines?: string[] | null; // 最新新闻标题（新闻源不可用时为 null）
-  newsSignal?: number | null;        // 新闻标题关键词情绪信号 0.2~0.8（0.5 中性）
-  newsDataSource?: string | null;    // 新闻来源（如 eastmoney）
-  newsStale?: boolean | null;        // true 表示新闻来自过期缓存
+  newsSignal?: number | null; // 新闻标题关键词情绪信号 0.2~0.8（0.5 中性）
+  newsDataSource?: string | null; // 新闻来源（如 eastmoney）
+  newsStale?: boolean | null; // true 表示新闻来自过期缓存
 }
 
 // 置信区间
@@ -201,9 +201,13 @@ export interface TradeSignal {
 
 // 分析报告
 export interface AnalysisReport {
+  personalModel?: import("./investment").PersonalModelAssessment | null;
   id: string;
   stockCode: string;
   stockName: string;
+  /** 后端返回枚举名；旧报告没有可靠记录时为 null。 */
+  strategy?: StrategyType | Uppercase<StrategyType> | null;
+  mode?: AnalysisMode | Uppercase<AnalysisMode> | null;
   finalSignal: SignalType;
   confidence: ConfidenceInterval;
   tradeSignal: TradeSignal;

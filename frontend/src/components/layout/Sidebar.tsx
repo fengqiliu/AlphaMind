@@ -2,162 +2,81 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  Brain,
-  Settings,
-} from "lucide-react";
+import { ArrowUpRight, AudioLines, Layers3 } from "lucide-react";
 import { APP_NAV_ITEMS } from "@/config/navigation";
 import { cn } from "@/utils";
 
-const MARKET_OVERVIEW = [
-  { label: "上证指数", value: "3,268.45", change: "+0.82%", positive: true },
-  { label: "深证成指", value: "10,856.32", change: "+1.12%", positive: true },
-  { label: "创业板", value: "2,186.78", change: "-0.34%", positive: false },
-];
-
 export function Sidebar() {
   const pathname = usePathname();
-
   return (
-    <aside className="w-64 min-h-screen bg-gradient-to-b from-[var(--bg-secondary)] to-[var(--bg-primary)] border-r border-[var(--border)] flex flex-col fixed left-0 top-0 z-50">
-      {/* Logo Section */}
-      <div className="p-5 border-b border-[var(--border)]">
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <div className="w-11 h-11 bg-gradient-to-br from-[var(--accent)] to-[#00ff88] rounded-xl flex items-center justify-center shadow-lg shadow-[var(--accent-glow)]">
-              <Brain
-                className="w-6 h-6 text-[var(--bg-primary)]"
-                strokeWidth={2.5}
-              />
-            </div>
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-[var(--bullish)] rounded-full pulse-live" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold tracking-tight">
-              <span className="gradient-text">Alpha</span>
-              <span className="text-[var(--text-primary)]">Mind</span>
-            </h1>
-            <p className="text-[10px] text-[var(--text-muted)] font-mono tracking-widest uppercase">
-              Multi-Agent Trading
-            </p>
-          </div>
-        </div>
+    <aside className="z-40 border-b border-[var(--border)] bg-white lg:fixed lg:inset-y-0 lg:left-0 lg:flex lg:w-60 lg:flex-col lg:border-r lg:border-b-0">
+      <div className="flex items-center justify-between px-5 py-5 lg:px-6 lg:py-8">
+        <Link
+          href="/"
+          aria-label="AlphaMind 首页"
+          className="flex items-center gap-2.5"
+        >
+          <span className="flex size-9 items-center justify-center rounded-xl bg-[var(--accent)] text-white">
+            <AudioLines className="size-5" strokeWidth={2.5} />
+          </span>
+          <span className="text-xl font-bold tracking-tight">
+            AlphaMind<span className="text-[var(--accent)]">.</span>
+          </span>
+        </Link>
+        <span className="rounded-md bg-[var(--bg-tertiary)] px-2 py-1 text-[10px] font-medium text-[var(--text-muted)] lg:hidden">
+          研究工作台
+        </span>
       </div>
-
-      {/* Status Bar */}
-      <div className="px-4 py-3 border-b border-[var(--border)]">
-        <div className="flex items-center justify-between text-xs font-mono">
-          <span className="text-[var(--text-muted)]">STATUS</span>
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-[var(--bullish)] rounded-full pulse-live" />
-            <span className="text-[var(--bullish)]">ONLINE</span>
-          </div>
-        </div>
+      <div className="hidden px-6 pb-3 text-[10px] font-semibold tracking-[0.18em] text-[var(--text-muted)] lg:block">
+        研究空间
       </div>
-
-      {/* Navigation */}
-      <nav className="flex-1 p-3 space-y-1">
+      <nav
+        aria-label="主导航"
+        className="grid grid-cols-5 gap-1 px-3 pb-3 lg:block lg:space-y-1 lg:px-4"
+      >
         {APP_NAV_ITEMS.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 group relative overflow-hidden",
-                  isActive
-                    ? "bg-gradient-to-r from-[var(--accent-subtle)] to-transparent text-[var(--accent)]"
-                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]",
-                )}
-              >
-                {isActive && (
-                  <>
-                    <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-[var(--accent)] rounded-r-full shadow-lg shadow-[var(--accent-glow)]" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-[var(--accent-glow)] to-transparent opacity-20" />
-                  </>
-                )}
-
-                <div
-                  className={cn(
-                    "transition-colors",
-                    isActive
-                      ? "text-[var(--accent)]"
-                      : "text-[var(--text-muted)] group-hover:text-[var(--text-primary)]",
-                  )}
-                >
-                  <Icon className="w-5 h-5" />
-                </div>
-                <div className="flex-1">
-                  <div className="font-medium text-sm">{item.label}</div>
-                  <div className="text-[10px] text-[var(--text-muted)] font-mono tracking-wider">
-                    {item.desc}
-                  </div>
-                </div>
-                {isActive && (
-                  <div className="w-2 h-2 bg-[var(--accent)] rounded-full pulse-live" />
-                )}
-              </Link>
-            );
-          })}
+          const Icon = item.icon;
+          const active = pathname === item.href;
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "group flex flex-col items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-1 py-2.5 text-[11px] font-medium transition-colors sm:flex-row sm:gap-2 sm:text-xs lg:justify-start lg:gap-3 lg:px-4 lg:py-3 lg:text-sm",
+                active
+                  ? "bg-[var(--accent-subtle)] text-[var(--accent)]"
+                  : "text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]",
+              )}
+            >
+              <Icon className="size-4 shrink-0 lg:size-[18px]" />
+              <span>{item.label}</span>
+              {active && (
+                <span className="ml-auto hidden size-1.5 rounded-full bg-[var(--accent)] lg:block" />
+              )}
+            </Link>
+          );
+        })}
       </nav>
-
-      {/* Market Quick Stats */}
-      <div className="mx-3 mb-3 p-3 glass-card">
-        <div className="text-[10px] text-[var(--text-muted)] font-mono tracking-wider mb-2">
-          MARKET OVERVIEW
+      <div className="mt-auto hidden p-4 lg:block">
+        <div className="rounded-2xl bg-[#f4f7f6] p-4">
+          <Layers3 className="mb-3 size-5 text-[var(--accent)]" />
+          <p className="text-sm font-semibold">让观点有据可循</p>
+          <p className="mt-2 text-xs leading-5 text-[var(--text-secondary)]">
+            从行情、技术到消息面，逐步形成完整的研究视角。
+          </p>
+          <Link
+            href="/history"
+            className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-[var(--accent)]"
+          >
+            回顾历史研究
+            <ArrowUpRight className="size-3.5" />
+          </Link>
         </div>
-        <div className="space-y-2">
-          {MARKET_OVERVIEW.map((item) => (
-            <QuickStat
-              key={item.label}
-              label={item.label}
-              value={item.value}
-              change={item.change}
-              positive={item.positive}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Footer */}
-      <div className="p-3 border-t border-[var(--border)]">
-        <button className="flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] transition-all duration-300 w-full group">
-          <Settings className="w-5 h-5 group-hover:rotate-45 transition-transform duration-300" />
-          <span>系统设置</span>
-        </button>
+        <p className="px-1 pt-5 pb-2 text-[10px] text-[var(--text-muted)]">
+          AlphaMind · 多 Agent 协作研究
+        </p>
       </div>
     </aside>
-  );
-}
-
-function QuickStat({
-  label,
-  value,
-  change,
-  positive,
-}: {
-  label: string;
-  value: string;
-  change: string;
-  positive: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-xs text-[var(--text-muted)]">{label}</span>
-      <div className="flex items-center gap-2">
-        <span className="text-xs font-mono text-[var(--text-primary)]">
-          {value}
-        </span>
-        <span
-          className={cn(
-            "text-[10px] font-mono",
-            positive ? "text-[var(--bullish)]" : "text-[var(--bearish)]",
-          )}
-        >
-          {change}
-        </span>
-      </div>
-    </div>
   );
 }

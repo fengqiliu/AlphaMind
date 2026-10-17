@@ -7,12 +7,14 @@ import { searchStocks } from "@/api/client";
 import type { StockSearchResult } from "@/types";
 
 interface StockSearchProps {
+  id?: string;
   onSelect: (stock: StockSearchResult) => void;
   placeholder?: string;
   className?: string;
 }
 
 export function StockSearch({
+  id,
   onSelect,
   placeholder = "搜索股票代码或名称...",
   className,
@@ -86,6 +88,7 @@ export function StockSearch({
       <div className="relative">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" />
         <input
+          id={id}
           type="text"
           aria-label="搜索股票"
           autoComplete="off"
