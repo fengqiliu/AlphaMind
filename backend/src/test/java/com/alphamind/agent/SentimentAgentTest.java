@@ -35,6 +35,7 @@ class SentimentAgentTest {
         // (0.5*0.4 + 0.566*0.2 + (0.55+0.2/0.7*0.15)*0.15) / 0.75 = 0.54
         assertEquals(0.54, missing.getSentimentScore());
         assertEquals("MISSING", missing.getValuationStatus());
+        assertEquals(0.66, missing.getSignalCoverage());
         assertTrue(missing.getScoreExplanation().contains("涨跌幅 53.3%"));
         assertFalse(missing.getScoreExplanation().contains("PE 25.0%"));
         assertTrue(missing.getAnalysisSummary().contains("未据此推断亏损"));
@@ -105,6 +106,7 @@ class SentimentAgentTest {
         assertEquals(0.5, actual.getSentimentScore());
         assertTrue(actual.getScoreExplanation().contains("中性占位"));
         assertEquals("数据不足", actual.getSentimentTrend());
+        assertEquals(0.0, actual.getSignalCoverage());
         assertTrue(actual.getPositiveFactors().stream().anyMatch(value -> value.contains("不代表风险已排除")));
     }
 
@@ -134,6 +136,7 @@ class SentimentAgentTest {
         assertEquals(Math.round((rawMarket * 0.88 + actual.getNewsSignal() * 0.12) * 100) / 100.0,
                 actual.getSentimentScore());
         assertTrue(actual.getScoreExplanation().contains("新闻标题关键词 12.0%"));
+        assertEquals(0.78, actual.getSignalCoverage());
         assertNull(actual.getMediaAttention());
         assertEquals(List.of("公司回购股份"), actual.getRecentHeadlines());
     }

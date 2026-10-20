@@ -15,6 +15,7 @@ test.describe("真实报告持久化与详情", () => {
     page,
     request,
   }) => {
+    page.on("console", message => { if (message.type() === "error" && message.text().includes("PDF")) console.error(message.text()); });
     for (const [strategy, mode] of [
       ["AGGRESSIVE", "PIPELINE"],
       ["CONSERVATIVE", "DEBATE"],
@@ -31,6 +32,19 @@ test.describe("真实报告持久化与详情", () => {
       const original = envelope.data;
       expect(original.strategy).toBe(strategy);
       expect(original.mode).toBe(mode);
+      expect(original.confidence.method).toBe("RULE_AGREEMENT_V1");
+      expect(original.technicalIndicators.sampleSize).toBeGreaterThanOrEqual(34);
+      expect(Object.values(original.technicalIndicators.scoreContributions).reduce((sum: number, value) => sum + Number(value), 0)).toBe(original.technicalIndicators.technicalScore);
+      expect(original.sentimentData.signalCoverage).toBeGreaterThan(0);
+      if (mode === "DEBATE") {
+        const votes = original.judgment.voteBreakdown;
+        expect(Object.values(votes).reduce((sum: number, value) => sum + Number(value), 0)).toBe(6);
+        if (original.judgment.finalPosition !== "NEUTRAL") expect(votes[original.judgment.finalPosition]).toBeGreaterThan(3);
+        for (const view of original.debateViews) {
+          expect(view.targetPrice ?? null).toBeNull();
+          expect(view.confidence).toEqual(original.confidence);
+        }
+      }
       // 当前报价源不提供估值；缺失不能被解释为亏损，评分来源随JSONB往返。
       expect(original.sentimentData.valuationStatus).toBe("MISSING");
       expect(original.sentimentData.mediaAttention ?? null).toBeNull();
@@ -76,6 +90,14 @@ test.describe("真实报告持久化与详情", () => {
       const file = await (await download).path();
       expect(JSON.parse(await readFile(file!, "utf8"))).toEqual(original);
       if (mode === "DEBATE") {
+        const markdownDownload = page.waitForEvent("download");
+        await detail.getByRole("button", {name: "导出 Markdown"}).click();
+        const markdown = await readFile((await (await markdownDownload).path())!, "utf8");
+        expect(markdown).toContain(original.confidence.explanation);
+        expect(markdown).toContain(original.technicalIndicators.scoreExplanation);
+        const pdfDownload = page.waitForEvent("download", { timeout: 20_000 });
+        await detail.getByRole("button", {name: "导出 PDF"}).click();
+        await (await pdfDownload).saveAs("../output/playwright/calibration-real-report.pdf");
         for (const text of [
           "多头分析师 · 看多",
           "空头分析师 · 看空",

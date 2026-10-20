@@ -58,13 +58,13 @@ export function TechnicalIndicatorsPanel({
   const { macd, rsi, kdj, bollinger } = data;
 
   const getScoreColor = (score: number) => {
-    if (score >= 60) return "text-[var(--bullish)]";
+    if (score >= 70) return "text-[var(--bullish)]";
     if (score >= 40) return "text-[var(--neutral)]";
     return "text-[var(--bearish)]";
   };
 
   const getScoreGradient = (score: number) => {
-    if (score >= 60) return "from-[var(--bullish)] to-[#00ff88]";
+    if (score >= 70) return "from-[var(--bullish)] to-[#00ff88]";
     if (score >= 40) return "from-[var(--neutral)] to-[#ffcc00]";
     return "from-[var(--bearish)] to-[#ff6699]";
   };
@@ -83,7 +83,7 @@ export function TechnicalIndicatorsPanel({
           <IndicatorCard
             title="MACD柱"
             value={macd.histogram}
-            signal={macd.histogram > 0 ? "oversold" : "overbought"}
+            signal={macd.histogram > 0 ? "oversold" : macd.histogram < 0 ? "overbought" : "neutral"}
           />
         </div>
       </div>
@@ -172,6 +172,22 @@ export function TechnicalIndicatorsPanel({
         </div>
       </div>
 
+      <details className="rounded-xl border border-[var(--border)] p-3" open>
+        <summary className="cursor-pointer text-sm font-medium">技术评分依据</summary>
+        <p className="mt-2 text-xs leading-relaxed text-[var(--text-secondary)]">
+          {data.scoreExplanation || "旧报告未记录技术评分口径，不按新规则重算。"}
+        </p>
+        {data.scoreContributions && (
+          <ul className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--text-muted)]">
+            {Object.entries(data.scoreContributions).map(([name, points]) => (
+              <li className="rounded bg-[var(--bg-tertiary)] px-2 py-1" key={name}>
+                {name} {points > 0 ? "+" : ""}{points}
+              </li>
+            ))}
+          </ul>
+        )}
+      </details>
+
       {/* 综合评分 */}
       <div className="pt-4 border-t border-[var(--border)]">
         <div className="flex items-center justify-between mb-3">
@@ -196,7 +212,7 @@ export function TechnicalIndicatorsPanel({
             )}
             style={{
               width: `${data.technicalScore}%`,
-              boxShadow: `0 0 10px ${data.technicalScore >= 60 ? "var(--bullish-glow)" : data.technicalScore >= 40 ? "var(--neutral-glow)" : "var(--bearish-glow)"}`,
+              boxShadow: `0 0 10px ${data.technicalScore >= 70 ? "var(--bullish-glow)" : data.technicalScore >= 40 ? "var(--neutral-glow)" : "var(--bearish-glow)"}`,
             }}
           />
         </div>

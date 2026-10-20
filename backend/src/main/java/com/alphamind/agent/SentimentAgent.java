@@ -355,6 +355,7 @@ public class SentimentAgent extends BaseAgent {
                 .mediaAttention(null)
                 .valuationStatus(valuationStatus)
                 .scoreExplanation(scoreExplanation)
+                .signalCoverage(Math.round((totalWeight * 0.88 + (headlineSignal == null ? 0 : 0.12)) * 100) / 100.0)
                 .dataGaps(dataGaps)
                 .analysisSummary(analysisSummary)
                 .recentHeadlines(recentHeadlines)

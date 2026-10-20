@@ -141,6 +141,9 @@ export interface TechnicalIndicators {
   kdj: { k: number; d: number; j: number };
   bollinger: { upper: number; middle: number; lower: number };
   technicalScore: number;
+  sampleSize?: number;
+  scoreExplanation?: string | null;
+  scoreContributions?: Record<string, number> | null;
 }
 
 // 舆情数据（与后端 SentimentDataDTO 字段对应）
@@ -151,6 +154,7 @@ export interface SentimentData {
   negativeFactors: string[]; // 负面因素列表
   newsCountBySource?: Record<string, number> | null; // 各来源新闻数量（新闻源不可用时为 null）
   mediaAttention: number | null; // 旧版估算值；新报告无实测来源时为 null
+  signalCoverage?: number;
   valuationStatus?: "MISSING" | "NON_POSITIVE" | "POSITIVE";
   scoreExplanation?: string | null;
   dataGaps?: string[] | null;
@@ -162,11 +166,12 @@ export interface SentimentData {
   newsStale?: boolean | null; // true 表示新闻来自过期缓存
 }
 
-// 置信区间
+// 规则一致度与历史置信度的兼容结构（不是统计置信区间）
 export interface ConfidenceInterval {
   value: number;
   level: ConfidenceLevel;
   explanation?: string;
+  method?: string | null;
 }
 
 // 辩论观点

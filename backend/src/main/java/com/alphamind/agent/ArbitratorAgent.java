@@ -2,6 +2,8 @@ package com.alphamind.agent;
 
 import com.alphamind.model.dto.*;
 import com.alphamind.model.enums.*;
+import com.alphamind.scoring.AnalysisScoringPolicy;
+import com.alphamind.scoring.DebateEvidence;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
@@ -41,24 +43,8 @@ public class ArbitratorAgent extends BaseAgent {
             DebateViewDTO bearView   = getContext("bearView");
             DebateViewDTO neutralView = getContext("neutralView");
 
-            // 收集基础票数
-            Map<DebatePosition, Integer> voteBreakdown = new EnumMap<>(DebatePosition.class);
-            int bullVotes = bullAgent.getVoteWeight();
-            int bearVotes = bearAgent.getVoteWeight();
-            int neutralVotes = neutralAgent.getVoteWeight();
-
-            // 根据三方置信度动态加权
-            if (bullView != null && bullView.getConfidence() != null)
-                bullVotes += (int) (bullView.getConfidence().getValue() * 2);
-            if (bearView != null && bearView.getConfidence() != null)
-                bearVotes += (int) (bearView.getConfidence().getValue() * 2);
-
-            voteBreakdown.put(DebatePosition.BULLISH, bullVotes);
-            voteBreakdown.put(DebatePosition.BEARISH, bearVotes);
-            voteBreakdown.put(DebatePosition.NEUTRAL, neutralVotes);
-
-            // 计算最终立场
-            DebatePosition finalPosition = calculateFinalPosition(technical, sentiment, bullVotes, bearVotes, neutralVotes);
+            Map<DebatePosition, Integer> voteBreakdown = calculateVoteBreakdown(technical, sentiment);
+            DebatePosition finalPosition = calculateFinalPosition(voteBreakdown);
 
             // 生成裁决推理（优先 LLM + 三方观点，降级为模板）
             String reasoning = generateReasoningWithViews(
@@ -112,7 +98,7 @@ public class ArbitratorAgent extends BaseAgent {
             - 中立: %d票
             - 空头: %d票
 
-            **决策置信度**: %.0f%% (%s)
+            **一致度/历史值**: %s
             %s
 
             **综合分析**:
@@ -130,8 +116,7 @@ public class ArbitratorAgent extends BaseAgent {
                 judgment.getVoteBreakdown().getOrDefault(DebatePosition.BULLISH, 0),
                 judgment.getVoteBreakdown().getOrDefault(DebatePosition.NEUTRAL, 0),
                 judgment.getVoteBreakdown().getOrDefault(DebatePosition.BEARISH, 0),
-                judgment.getConfidence().getValue() * 100,
-                judgment.getConfidence().getLevel().getLabel(),
+                AnalysisScoringPolicy.describe(judgment.getConfidence()),
                 judgment.getConfidence().getExplanation(),
                 judgment.getReasoning(),
                 String.join("\n", judgment.getRiskWarnings().stream()
@@ -176,36 +161,30 @@ public class ArbitratorAgent extends BaseAgent {
             - 明确给出最终裁决（看多/看空/中立）
             - 解释决策的主要依据
             - 列出需要注意的风险因素
-            - 提供具体的交易建议
+            - 不编造财报、机构观点、交叉、趋势或估值事实；只解释给定证据
+            - 仲裁立场不改写策略交易计划，不另行设定目标价和止损
+            - 规则一致度不是收益概率
             """;
     }
 
-    private DebatePosition calculateFinalPosition(
-            TechnicalIndicatorsDTO technical,
-            SentimentDataDTO sentiment,
-            int bullishVotes,
-            int bearishVotes,
-            int neutralVotes) {
+    Map<DebatePosition, Integer> calculateVoteBreakdown(TechnicalIndicatorsDTO technical, SentimentDataDTO sentiment) {
+        Map<DebatePosition, Integer> votes = new EnumMap<>(DebatePosition.class);
+        votes.put(DebatePosition.BULLISH, bullAgent.getVoteWeight());
+        votes.put(DebatePosition.BEARISH, bearAgent.getVoteWeight());
+        votes.put(DebatePosition.NEUTRAL, neutralAgent.getVoteWeight());
+        votes.merge(AnalysisScoringPolicy.technicalPosition(technical.getTechnicalScore()), 2, Integer::sum);
+        double score = sentiment.getSentimentScore();
+        DebatePosition sentimentPosition = score >= 0.65 ? DebatePosition.BULLISH
+                : score < 0.35 ? DebatePosition.BEARISH : DebatePosition.NEUTRAL;
+        votes.merge(sentimentPosition, 1, Integer::sum);
+        return votes;
+    }
 
-        // 技术面加权
-        int techScore = technical.getTechnicalScore();
-        if (techScore >= 70) bullishVotes += 2;
-        else if (techScore <= 30) bearishVotes += 2;
-        else neutralVotes += 1;
-
-        // 舆情面加权
-        double sentScore = sentiment.getSentimentScore();
-        if (sentScore >= 0.65) bullishVotes += 1;
-        else if (sentScore <= 0.35) bearishVotes += 1;
-
-        // 多数裁定
-        if (bullishVotes > bearishVotes + neutralVotes) {
-            return DebatePosition.BULLISH;
-        } else if (bearishVotes > bullishVotes + neutralVotes) {
-            return DebatePosition.BEARISH;
-        } else {
-            return DebatePosition.NEUTRAL;
-        }
+    DebatePosition calculateFinalPosition(Map<DebatePosition, Integer> votes) {
+        int total = votes.values().stream().mapToInt(Integer::intValue).sum();
+        if (votes.get(DebatePosition.BULLISH) * 2 > total) return DebatePosition.BULLISH;
+        if (votes.get(DebatePosition.BEARISH) * 2 > total) return DebatePosition.BEARISH;
+        return DebatePosition.NEUTRAL;
     }
 
     private String generateReasoningWithViews(
@@ -233,7 +212,7 @@ public class ArbitratorAgent extends BaseAgent {
                     %s
 
                     综合投票结果：%s
-                    最终信号：%s，目标价¥%.2f，止损价¥%.2f
+                    独立策略计划：%s，示意目标价¥%.2f，止损价¥%.2f
 
                     请给出裁决理由：
                     """,
@@ -266,45 +245,13 @@ public class ArbitratorAgent extends BaseAgent {
             SentimentDataDTO sentiment,
             TradeSignalDTO signal) {
 
-        StringBuilder reasoning = new StringBuilder();
-
-        reasoning.append("综合多方分析师意见后，仲裁官做出以下裁决：\n\n");
-
-        switch (position) {
-            case BULLISH -> {
-                reasoning.append("**裁决：看多**\n\n");
-                reasoning.append("主要依据：\n");
-                reasoning.append("1. 技术面综合评分").append(technical.getTechnicalScore())
-                        .append("/100，趋势向好\n");
-                reasoning.append("2. MACD指标形成金叉，短期动能充足\n");
-                reasoning.append("3. 舆情评分").append(String.format("%.0f", sentiment.getSentimentScore() * 100))
-                        .append("/100，机构看好\n");
-                reasoning.append("4. 多头分析师占据多数席位\n");
-                reasoning.append("5. 基本面支撑估值中枢上移\n");
-            }
-            case BEARISH -> {
-                reasoning.append("**裁决：看空**\n\n");
-                reasoning.append("主要依据：\n");
-                reasoning.append("1. 技术面综合评分").append(technical.getTechnicalScore())
-                        .append("/100，趋势偏弱\n");
-                reasoning.append("2. RSI指标处于超买区域\n");
-                reasoning.append("3. 舆情评分").append(String.format("%.0f", sentiment.getSentimentScore() * 100))
-                        .append("/100，负面情绪累积\n");
-                reasoning.append("4. 空头分析师占据多数席位\n");
-                reasoning.append("5. 估值压力和成本压力并存\n");
-            }
-            default -> {
-                reasoning.append("**裁决：中性**\n\n");
-                reasoning.append("主要依据：\n");
-                reasoning.append("1. 技术面方向不明朗\n");
-                reasoning.append("2. 多空双方势均力敌\n");
-                reasoning.append("3. 舆情中性，无明显方向\n");
-                reasoning.append("4. 市场处于观望期\n");
-                reasoning.append("5. 建议等待信号明确后再操作\n");
-            }
-        }
-
-        return reasoning.toString();
+        Map<DebatePosition, Integer> votes = calculateVoteBreakdown(technical, sentiment);
+        return "**规则仲裁：" + position.getLabel() + "**\n\n"
+                + "三方基础各1票，技术桶2票、舆情桶1票；总计6票，严格过半才看多/看空，否则中立。\n"
+                + "实际票数：看多" + votes.get(DebatePosition.BULLISH) + "、看空" + votes.get(DebatePosition.BEARISH)
+                + "、中立" + votes.get(DebatePosition.NEUTRAL) + "。\n"
+                + String.join("\n", DebateEvidence.reasons(getContext("marketData"), technical, sentiment, DebatePosition.NEUTRAL))
+                + "\n仲裁立场用于核对论据，不改写独立策略交易计划；规则一致度不是收益概率。";
     }
 
     private List<String> generateRiskWarnings(
@@ -319,28 +266,16 @@ public class ArbitratorAgent extends BaseAgent {
             warnings.add("RSI指标显示超买，短期或有回调压力");
         }
         if (technical.getRsi().getRsi12() < 30) {
-            warnings.add("RSI指标显示超卖，可能存在反弹机会");
+            warnings.add("RSI处于超卖区间，不能据此保证反弹");
         }
 
         // 舆情风险
         // 当前无实测媒体关注度；旧版估算也不能用于判断泡沫或催化剂。
         warnings.add("媒体关注度缺少实测来源，相关风险未评估");
 
-        // 仓位风险
-        if (position == DebatePosition.BULLISH) {
-            warnings.add("注意止损纪律，控制在-7%以内");
-            warnings.add("避免追高，回调时分批建仓");
-        } else if (position == DebatePosition.BEARISH) {
-            warnings.add("做空需谨慎，建议等待更明确信号");
-            warnings.add("注意空头回补风险");
-        } else {
-            warnings.add("保持中性仓位，避免单边押注");
-            warnings.add("密切关注突破信号");
-        }
-
-        // 通用风险
-        warnings.add("市场整体波动加大，注意仓位管理");
-        warnings.add("以上分析仅供参考，不构成投资建议");
+        if (sentiment.getDataGaps() != null) warnings.addAll(sentiment.getDataGaps());
+        warnings.add("规则评分与一致度未经历史回测校准，不代表胜率或收益概率");
+        warnings.add("止损、仓位和周期以本次策略交易计划为准，不由辩论立场另行设定");
 
         return warnings;
     }

@@ -74,6 +74,9 @@ public class AnalysisReportEntity {
     @Column(name = "confidence_explanation", columnDefinition = "TEXT")
     private String confidenceExplanation;
 
+    @Column(name = "confidence_method", length = 40)
+    private String confidenceMethod;
+
     // jsonb 字段 - 完整分析数据（Hibernate 6 原生 JSON 类型）
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "market_data", columnDefinition = "jsonb")

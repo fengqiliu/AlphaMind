@@ -1,5 +1,6 @@
 "use client";
 
+import { confidenceTitle } from "@/utils/confidenceMetadata";
 import { cn } from "@/utils";
 import type { Judgment, DebateView } from "@/types";
 import { DebatePosition, SignalType, AgentType } from "@/types";
@@ -187,7 +188,7 @@ export function DebateResult({
       {/* Confidence */}
       <div className="p-4 bg-[var(--bg-tertiary)] rounded-xl border border-[var(--border)]">
         <div className="text-xs font-mono text-[var(--text-muted)] tracking-wider mb-3">
-          综合置信度
+          {confidenceTitle(judgment.confidence)}
         </div>
         <ConfidenceBar confidence={judgment.confidence} />
       </div>

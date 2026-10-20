@@ -1,13 +1,13 @@
 package com.alphamind.agent;
 
 import com.alphamind.model.dto.*;
+import com.alphamind.scoring.AnalysisScoringPolicy;
+import com.alphamind.scoring.DebateEvidence;
 import com.alphamind.model.enums.AgentType;
-import com.alphamind.model.enums.ConfidenceLevel;
 import com.alphamind.model.enums.DebatePosition;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -30,16 +30,12 @@ public class BullAgent extends BaseAgent {
 
         // 优先尝试 LLM，退而使用模板
         String viewText;
-        String llmPrompt = buildBullPrompt(market, tech, sentiment, "请从多头立场给出该股的核心看多论点和目标价格。");
+        String llmPrompt = buildBullPrompt(market, tech, sentiment, "请列出有数据支持的多头论据，没有证据就说明缺口。");
         String llmResult = llmCall(getSystemPrompt(), llmPrompt);
         viewText = llmResult != null ? llmResult : generateBullArgument(market, tech, sentiment);
 
         List<String> reasons = extractBullReasons(market, tech, sentiment);
-        double targetPrice = market != null ? market.getCurrentPrice() * 1.15 : 0;
-        double upside = 15.0;
-        double confValue = tech != null ? Math.min(0.92, 0.40 + tech.getTechnicalScore() / 120.0) : 0.60;
-        ConfidenceLevel confLevel = confValue >= 0.70 ? ConfidenceLevel.HIGH
-                : confValue >= 0.50 ? ConfidenceLevel.MEDIUM : ConfidenceLevel.LOW;
+        ConfidenceDTO evidenceConfidence = AnalysisScoringPolicy.confidence(market, tech, sentiment);
 
         DebateViewDTO bullView = DebateViewDTO.builder()
                 .position(DebatePosition.BULLISH)
@@ -47,18 +43,10 @@ public class BullAgent extends BaseAgent {
                 .view(viewText)
                 .reasons(reasons)
                 .keyPoints(reasons.stream().limit(3).toList())
-                .targetPrice(targetPrice)
-                .upsidePotential(String.format("+%.1f%%", upside))
-                .confidence(ConfidenceDTO.builder()
-                        .value(confValue)
-                        .level(confLevel)
-                        .explanation("基于技术面和舆情综合评估")
-                        .build())
-                .attackPoints(List.of(
-                        "即便短期回调，中长期上涨逻辑依然成立",
-                        "空头所指风险已在现价中充分定价",
-                        "当前位置属于中期起点区间，不适合做空"
-                ))
+                .targetPrice(null)
+                .upsidePotential(null)
+                .confidence(evidenceConfidence)
+                .attackPoints(List.of("财报与历史估值证据是否齐备？", "当前指标是否被误写成历史趋势？"))
                 .build();
 
         setContext("bullView", bullView);
@@ -91,25 +79,12 @@ public class BullAgent extends BaseAgent {
     @Override
     public String getSystemPrompt() {
         return """
-            你是一名坚定的多头分析师，负责从看多角度分析股票的投资价值。
-
-            你的立场：
-            - 你是多头阵营的辩手
-            - 你需要积极寻找支持买入的证据和逻辑
-            - 你相信股价上涨的潜力
-
-            分析框架：
-            1. 寻找技术面的利好信号（金叉、突破、缩量整理等）
-            2. 分析基本面亮点（业绩增长、政策利好、行业景气等）
-            3. 解读舆情中的正面因素
-            4. 评估估值吸引力
-            5. 识别潜在催化剂
-
-            输出要求：
-            - 给出明确的多头观点
-            - 提供支持多头的3-5个核心论点
-            - 指明潜在上涨空间和目标价
-            - 不要忽视风险，但要强调机遇
+            你从多头立场检验投资假设，立场不是已被证实的结论。
+            只使用提供的行情、技术指标和新闻，逐项区分证据、假设与缺口。
+            不编造财报、机构观点、估值合理性、同业排名或宏观环境事实。
+            当前指标关系不能证明金叉、死叉或持续变化；没有历史序列证据时不得如此表述。
+            允许没有足够论据，不强行凑数；不生成独立目标价、固定止损或收益概率。
+            交易计划由策略规则另行生成，只解释已提供内容。
             """;
     }
 
@@ -118,99 +93,19 @@ public class BullAgent extends BaseAgent {
     }
 
     public int getVoteWeight() {
-        return 3;
+        return 1;
     }
 
     private String buildBullPrompt(MarketDataDTO market, TechnicalIndicatorsDTO tech, SentimentDataDTO sentiment, String question) {
-        return appendNewsHeadlines(String.format("""
-                股票: %s (%s), 当前价: ¥%.2f, 涨跌: %+.2f%%
-                技术评分: %d/100, 舆情评分: %.0f/100
-                用户问题: %s
-                请从多头立场给出3-5个核心看多论点和目标价。
-                """,
-                market != null ? market.getStockName() : "N/A",
-                market != null ? market.getStockCode() : "N/A",
-                market != null ? market.getCurrentPrice() : 0,
-                market != null && market.getChangePercent() != null ? market.getChangePercent() : 0,
-                tech != null ? tech.getTechnicalScore() : 0,
-                sentiment != null ? sentiment.getSentimentScore() * 100 : 0,
-                question), sentiment);
+        return appendNewsHeadlines(DebateEvidence.prompt(market, tech, sentiment,
+                DebatePosition.BULLISH, question), sentiment);
     }
 
     private List<String> extractBullReasons(MarketDataDTO market, TechnicalIndicatorsDTO tech, SentimentDataDTO sentiment) {
-        List<String> reasons = new ArrayList<>();
-        if (tech != null) {
-            if (tech.getMacd() != null && tech.getMacd().getHistogram() > 0)
-                reasons.add("MACD红柱持续放大，多头趋势确认");
-            if (tech.getKdj() != null && tech.getKdj().getK() > tech.getKdj().getD())
-                reasons.add("KDJ金叉形成，短期动能充足");
-            if (tech.getRsi() != null && tech.getRsi().getRsi12() < 65 && tech.getRsi().getRsi12() > 40)
-                reasons.add("RSI 处于健康多头区间，进入时机尚佳");
-            if (tech.getTechnicalScore() >= 60)
-                reasons.add("综合技术评分 " + tech.getTechnicalScore() + "/100，超越多数股票");
-        }
-        if (market != null && market.getPe() != null && market.getPe() > 0 && market.getPe() < 35)
-            reasons.add("PE " + String.format("%.1f", market.getPe()) + "，估値仍具吸引力");
-        if (sentiment != null && sentiment.getSentimentScore() > 0.55)
-            reasons.add("舆情评分 " + String.format("%.0f", sentiment.getSentimentScore() * 100) + "/100，机构持续乐观");
-        int newsCount = totalNewsCount(sentiment);
-        if (newsCount > 0)
-            reasons.add("新闻源近期收录 " + newsCount + " 篇相关资讯，消息面关注度较高");
-        if (reasons.isEmpty()) {
-            reasons.add("当前价格处于合理区间，具备上涨潜力");
-            reasons.add("市场整体环境有利，板块轮动进入强势");
-        }
-        return reasons;
+        return DebateEvidence.reasons(market, tech, sentiment, DebatePosition.BULLISH);
     }
 
-    private String generateBullArgument(MarketDataDTO marketData, TechnicalIndicatorsDTO technical, SentimentDataDTO sentiment) {
-        if (marketData == null) return "【多头观点】数据暂不可用，请先发起分析。";
-
-        StringBuilder analysis = new StringBuilder();
-        analysis.append("**【多头观点】坚定看好后市表现**\n\n");
-        analysis.append("**核心看多逻辑**:\n\n");
-
-        if (technical != null) {
-            analysis.append("1️⃣ **技术面看多**\n");
-            TechnicalIndicatorsDTO.MacdDTO macd = technical.getMacd();
-            if (macd != null && macd.getHistogram() > 0) {
-                analysis.append("   - MACD红柱持续，趋势向好\n");
-            }
-            if (technical.getKdj() != null && technical.getKdj().getK() > technical.getKdj().getD()) {
-                analysis.append("   - KDJ金叉形成，短期动能充足\n");
-            }
-            analysis.append(String.format("   - 综合技术评分 %d/100\n\n", technical.getTechnicalScore()));
-        }
-
-        analysis.append("2️⃣ **基本面支撑**\n");
-        analysis.append(String.format("   - 当前价格 ¥%.2f，估值合理\n", marketData.getCurrentPrice()));
-        if (marketData.getPe() != null && marketData.getPe() < 30) {
-            analysis.append(String.format("   - 市盈率 %.1f，具备估值优势\n", marketData.getPe()));
-        }
-        if (marketData.getMarketCap() != null) {
-            analysis.append(String.format("   - 总市值 %.2f亿，流动性良好\n\n", marketData.getMarketCap() / 1e8));
-        }
-
-        if (sentiment != null) {
-            analysis.append("3️⃣ **市场情绪偏多**\n");
-            if (sentiment.getSentimentScore() > 0.5) {
-                analysis.append(String.format("   - 舆情评分 %.0f/100，机构看好\n", sentiment.getSentimentScore() * 100));
-            }
-            if (sentiment.getPositiveFactors() != null && !sentiment.getPositiveFactors().isEmpty()) {
-                analysis.append("   - 主要利好:\n");
-                sentiment.getPositiveFactors().stream()
-                        .limit(2)
-                        .forEach(f -> analysis.append("     • ").append(f).append("\n"));
-            }
-        }
-
-        double targetPrice = marketData.getCurrentPrice() * 1.15;
-        double upside = (targetPrice - marketData.getCurrentPrice()) / marketData.getCurrentPrice() * 100;
-
-        analysis.append("\n**目标价格**: ¥").append(String.format("%.2f", targetPrice))
-                .append(" (上涨空间: +").append(String.format("%.1f%%", upside)).append(")\n");
-        analysis.append("**建议**: 积极买入，回调即是加仓机会");
-
-        return analysis.toString();
+    private String generateBullArgument(MarketDataDTO market, TechnicalIndicatorsDTO tech, SentimentDataDTO sentiment) {
+        return DebateEvidence.render(market, tech, sentiment, DebatePosition.BULLISH);
     }
 }

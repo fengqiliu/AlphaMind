@@ -33,6 +33,16 @@ class StrategySignalPlannerTest {
     }
 
     @Test
+    void sameScaleBoundariesAndConfidenceGateAreInclusive() {
+        StrategyProfile profile = new BalancedStrategyProfile();
+        assertEquals(SignalType.BUY, planner.plan(100, 60, 0.8, 0.65, profile).getType());
+        assertEquals(SignalType.HOLD, planner.plan(100, 60, 0.799, 0.9, profile).getType());
+        assertEquals(SignalType.HOLD, planner.plan(100, 40, 0.6, 0.9, profile).getType());
+        assertEquals(SignalType.SELL, planner.plan(100, 40, 0.599, 0.9, profile).getType());
+        assertEquals(SignalType.HOLD, planner.plan(100, 80, 0.8, 0.649, profile).getType());
+    }
+
+    @Test
     void shouldReturnSellWhenCompositeScoreIsLow() {
         StrategyProfile profile = new BalancedStrategyProfile();
 

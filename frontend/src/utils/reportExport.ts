@@ -1,3 +1,4 @@
+import { confidenceTitle, confidenceValue } from "@/utils/confidenceMetadata";
 import type { AnalysisReport, DebatePosition } from "@/types";
 import { SignalType } from "@/types";
 import { modeLabel, strategyLabel } from "@/utils/reportMetadata";
@@ -47,7 +48,7 @@ function triggerDownload(content: string, mimeType: string, fileName: string) {
 
 export function reportToMarkdown(report: AnalysisReport): string {
   if (report.personalModel) return personalModelMarkdown(report);
-  const confidencePercent = `${(report.confidence.value * 100).toFixed(0)}%`;
+  const confidencePercent = confidenceValue(report.confidence);
   const createdAt = new Date(report.createdAt).toLocaleString("zh-CN");
   const lines = [
     `# ${report.stockName}（${report.stockCode}）分析报告`,
@@ -56,7 +57,10 @@ export function reportToMarkdown(report: AnalysisReport): string {
     `- 投资策略：${strategyLabel(report.strategy)}`,
     `- 分析模式：${modeLabel(report.mode)}`,
     `- 最终信号：${signalLabel(report.finalSignal)}`,
-    `- 置信度：${confidencePercent}（${report.confidence.level}）`,
+    `- ${confidenceTitle(report.confidence)}：${confidencePercent}（${report.confidence.level}）`,
+    `- 一致度方法：${report.confidence.method || "旧报告未记录"}`,
+    `- 一致度说明：${report.confidence.explanation || "未记录"}`,
+    "- 此数值不是胜率或收益概率。",
     "",
     "## 交易建议",
     "",
@@ -78,6 +82,8 @@ export function reportToMarkdown(report: AnalysisReport): string {
     "## 技术面",
     "",
     `- 技术评分：${report.technicalIndicators.technicalScore.toFixed(2)}`,
+    `- 技术口径：${report.technicalIndicators.scoreExplanation || "旧报告未记录"}`,
+    ...Object.entries(report.technicalIndicators.scoreContributions ?? {}).map(([name, value]) => `- 技术分项 ${name}：${value}`),
     `- MACD(DIF/DEA/Hist)：${report.technicalIndicators.macd.dif.toFixed(2)} / ${report.technicalIndicators.macd.dea.toFixed(2)} / ${report.technicalIndicators.macd.histogram.toFixed(2)}`,
     `- RSI(6/12/24)：${report.technicalIndicators.rsi.rsi6.toFixed(2)} / ${report.technicalIndicators.rsi.rsi12.toFixed(2)} / ${report.technicalIndicators.rsi.rsi24.toFixed(2)}`,
     `- KDJ(K/D/J)：${report.technicalIndicators.kdj.k.toFixed(2)} / ${report.technicalIndicators.kdj.d.toFixed(2)} / ${report.technicalIndicators.kdj.j.toFixed(2)}`,
@@ -184,7 +190,7 @@ function buildReportHtml(report: AnalysisReport): string {
       : report.finalSignal === SignalType.SELL
         ? "#ef4444"
         : "#f59e0b";
-  const confidencePercent = `${(report.confidence.value * 100).toFixed(0)}%`;
+  const confidencePercent = confidenceValue(report.confidence);
   const createdAt = new Date(report.createdAt).toLocaleString("zh-CN");
   const t = report.technicalIndicators;
   const m = report.marketData;
@@ -238,13 +244,14 @@ function buildReportHtml(report: AnalysisReport): string {
           <span style="font-weight:600;">${report.tradeSignal.holdingPeriodDays} 个交易日</span>
         </div>
         <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
-          <span style="${labelStyle}">综合置信度：</span>
+          <span style="${labelStyle}">${confidenceTitle(report.confidence)}：</span>
           <span style="font-weight:600;">${confidencePercent}（${report.confidence.level}）</span>
         </div>
       </div>
+      <div style="background:#fff;padding:10px;margin-bottom:12px;font-size:12px;line-height:1.8;"><div>${escapeHtml(report.confidence.explanation || "旧报告未记录一致度口径")}</div><div>此数值不是胜率或收益概率。</div></div>
       <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
         <div style="${labelStyle}">投资理由</div>
-        <div style="font-size:13px;color:#374151;line-height:1.6;">${report.tradeSignal.rationale}</div>
+        <div style="font-size:13px;color:#374151;line-height:1.6;">${escapeHtml(report.tradeSignal.rationale)}</div>
       </div>
     </div>`;
 
@@ -257,22 +264,22 @@ function buildReportHtml(report: AnalysisReport): string {
       value: `${changeSign}${m.changePercent.toFixed(2)}%`,
       color: changeColor,
     },
-    { label: "成交量（手）", value: m.volume.toFixed(0) },
+    { label: "成交量", value: m.volume.toFixed(0) },
     { label: "换手率", value: `${m.turnoverRate.toFixed(2)}%` },
     {
       label: "市值（亿）",
       value:
-        m.marketCap === null ? "数据源未提供" : (m.marketCap / 1e8).toFixed(2),
+        m.marketCap == null ? "数据源未提供" : (m.marketCap / 1e8).toFixed(2),
     },
     {
       label: "市盈率",
-      value: m.pe === null ? "数据源未提供" : m.pe.toFixed(2),
+      value: m.pe == null ? "数据源未提供" : m.pe.toFixed(2),
     },
     {
       label: "市净率",
-      value: m.pb === null ? "数据源未提供" : m.pb.toFixed(2),
+      value: m.pb == null ? "数据源未提供" : m.pb.toFixed(2),
     },
-    { label: "52周高", value: `¥${m.high.toFixed(2)}` },
+    { label: "当日最高", value: `¥${m.high.toFixed(2)}` },
   ]
     .map(
       (item) =>
@@ -292,6 +299,7 @@ function buildReportHtml(report: AnalysisReport): string {
   const technical = `
     <div style="${sectionStyle}">
       <p style="${headingStyle}">📉 技术指标</p>
+      <div style="background:#fff;padding:10px;margin-bottom:12px;font-size:12px;line-height:1.8;"><div>${escapeHtml(t.scoreExplanation || "旧报告未记录技术评分口径")}</div><div>${escapeHtml(Object.entries(t.scoreContributions ?? {}).map(([name, value]) => `${name} ${value}`).join("；"))}</div></div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
         <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
           <div style="${labelStyle}">技术评分</div>
@@ -321,19 +329,19 @@ function buildReportHtml(report: AnalysisReport): string {
   const posRows = (s.positiveFactors ?? [])
     .map(
       (f) =>
-        `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${f}</div>`,
+        `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${escapeHtml(f)}</div>`,
     )
     .join("");
   const negRows = (s.negativeFactors ?? [])
     .map(
       (f) =>
-        `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${f}</div>`,
+        `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${escapeHtml(f)}</div>`,
     )
     .join("");
   const newsRows = (s.recentHeadlines ?? [])
     .map(
       (h) =>
-        `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${h}</div>`,
+        `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${escapeHtml(h)}</div>`,
     )
     .join("");
   const sentiment = `
@@ -349,7 +357,7 @@ function buildReportHtml(report: AnalysisReport): string {
         </div>
       </div>
       <div style="font-size:12px;line-height:1.6;margin-bottom:10px;">评分依据：${escapeHtml(s.scoreExplanation || "旧报告未记录评分口径，不能按当前规则重新解释。")}${(s.dataGaps ?? []).map((gap) => `<div>数据缺口：${escapeHtml(gap)}</div>`).join("")}</div>
-      ${s.analysisSummary ? `<div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;font-size:12px;color:#374151;line-height:1.6;margin-bottom:10px;">${s.analysisSummary}</div>` : ""}
+      ${s.analysisSummary ? `<div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;font-size:12px;color:#374151;line-height:1.6;margin-bottom:10px;">${escapeHtml(s.analysisSummary)}</div>` : ""}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         ${posRows ? `<div><div style="font-size:11px;color:#22c55e;font-weight:700;margin-bottom:5px;">▲ 利好因素</div>${posRows}</div>` : ""}
         ${negRows ? `<div><div style="font-size:11px;color:#ef4444;font-weight:700;margin-bottom:5px;">▼ 风险因素</div>${negRows}</div>` : ""}
@@ -384,7 +392,7 @@ function buildReportHtml(report: AnalysisReport): string {
           </div>
           <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;flex:1;">
             <div style="${labelStyle}">裁决说明</div>
-            <div style="font-size:12px;color:#374151;line-height:1.5;">${j.reasoning}</div>
+            <div style="font-size:12px;color:#374151;line-height:1.5;">${escapeHtml(j.reasoning).replaceAll("\n", "<br>")}</div>
           </div>
         </div>
         ${warnings ? `<div style="background:#fef2f2;padding:10px;border-radius:6px;border:1px solid #fecaca;"><div style="font-size:11px;color:#ef4444;font-weight:700;margin-bottom:5px;">⚠️ 风险提示</div>${warnings}</div>` : ""}
@@ -403,7 +411,7 @@ function buildReportHtml(report: AnalysisReport): string {
               : "#f59e0b";
         return `<div style="background:#fff;padding:10px;border-radius:6px;border-left:3px solid ${c};margin-bottom:8px;">
           <div style="font-size:11px;font-weight:700;color:${c};margin-bottom:4px;">${debateLabel(dv.position)}</div>
-          <div style="font-size:12px;color:#374151;line-height:1.5;">${dv.view}</div>
+          <div style="font-size:12px;color:#374151;line-height:1.5;">${escapeHtml(dv.view).replaceAll("\n", "<br>")}</div>
         </div>`;
       })
       .join("");
@@ -459,16 +467,58 @@ export async function downloadReportPdf(report: AnalysisReport): Promise<void> {
     });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    const imgH = (canvas.height / canvas.width) * pageW;
-    const imgData = canvas.toDataURL("image/jpeg", 0.95);
-
-    let remaining = imgH;
-    let yOffset = 0;
-    while (remaining > 0) {
-      if (yOffset > 0) pdf.addPage();
-      pdf.addImage(imgData, "JPEG", 0, -yOffset, pageW, imgH);
-      yOffset += pageH;
-      remaining -= pageH;
+    const pixelsPerPage = Math.floor(canvas.width * pageH / pageW);
+    const bounds = el.getBoundingClientRect();
+    const canvasScale = canvas.width / bounds.width;
+    const protectedBlocks = Array.from(el.querySelectorAll("div")).map(block => {
+      const rect = block.getBoundingClientRect();
+      return { top: Math.floor((rect.top - bounds.top) * canvasScale),
+        bottom: Math.ceil((rect.bottom - bounds.top) * canvasScale), height: rect.height * canvasScale };
+    }).filter(block => block.height > 0 && block.height <= pixelsPerPage * 0.3);
+    for (const heading of el.querySelectorAll("p")) {
+      const rect = heading.getBoundingClientRect();
+      const following = heading.nextElementSibling?.getBoundingClientRect();
+      const continuation = Math.min(80, following?.height ?? 0) * canvasScale;
+      protectedBlocks.push({top: Math.floor((rect.top - bounds.top) * canvasScale),
+        bottom: Math.ceil((rect.bottom - bounds.top) * canvasScale + continuation),
+        height: rect.height * canvasScale + continuation});
+    }
+    const context = canvas.getContext("2d");
+    let start = 0;
+    while (start < canvas.height) {
+      let end = Math.min(start + pixelsPerPage, canvas.height);
+      // 在页尾附近寻找不含深色文字的连续空行，避免把新增长说明或数字截成上下两半。
+      if (end < canvas.height && context) {
+        const searchStart = Math.max(start + Math.floor(pixelsPerPage * 0.85), end - 160);
+        const rows = context.getImageData(0, searchStart, canvas.width, end - searchStart);
+        let blankRows = 0;
+        for (let row = rows.height - 1; row >= 0; row--) {
+          let hasInk = false;
+          for (let column = 0; column < rows.width; column++) {
+            const index = (row * rows.width + column) * 4;
+            if (Math.min(rows.data[index], rows.data[index + 1], rows.data[index + 2]) < 180) {
+              hasInk = true;
+              break;
+            }
+          }
+          blankRows = hasInk ? 0 : blankRows + 1;
+          if (blankRows >= 4) { end = searchStart + row + 2; break; }
+        }
+      }
+      // 小型指标卡整体移到下一页，避免标签和值被分到两页。
+      for (const block of protectedBlocks) {
+        if (block.top > start + pixelsPerPage * 0.5 && end > block.top && end < block.bottom)
+          end = block.top;
+      }
+      const slice = document.createElement("canvas");
+      slice.width = canvas.width;
+      slice.height = end - start;
+      const sliceContext = slice.getContext("2d");
+      if (!sliceContext) throw new Error("无法创建PDF分页画布");
+      sliceContext.drawImage(canvas, 0, start, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
+      if (start > 0) pdf.addPage();
+      pdf.addImage(slice.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, pageW, slice.height / canvas.width * pageW);
+      start = end;
     }
 
     pdf.save(`${getBaseName(report)}.pdf`);

@@ -23,6 +23,8 @@ public class SentimentDataDTO {
     private String valuationStatus;
     /** 实际参与计算的信号及权重，旧报告没有此字段。 */
     private String scoreExplanation;
+    /** 原始行情88% + 新闻12%的可用覆盖度，不是正确率。 */
+    private Double signalCoverage;
     private List<String> dataGaps;
     private String analysisSummary;
     // LLM生成的舆情综合摘要

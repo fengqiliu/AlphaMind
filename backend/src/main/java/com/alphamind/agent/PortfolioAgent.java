@@ -40,7 +40,7 @@ public class PortfolioAgent extends BaseAgent {
             }
 
             // 先生成置信度，再由策略生成交易信号
-            ConfidenceDTO confidence = calculateConfidence(technicalIndicators, sentimentData, strategy);
+            ConfidenceDTO confidence = calculateConfidence(technicalIndicators, sentimentData);
             TradeSignalDTO tradeSignal = strategySignalPlanner.plan(
                     marketData.getCurrentPrice(),
                     technicalIndicators.getTechnicalScore(),
@@ -83,14 +83,14 @@ public class PortfolioAgent extends BaseAgent {
         // 优先使用LLM
         String portfolioPrompt = String.format("""
                 当前投资建议：
-                - 信号: %s (置信度 %.0f%%)
+                - 信号: %s (%s)
                 - 入场价: ¥%.2f | 目标价: ¥%.2f | 止损价: ¥%.2f
                 - 持仓周期: %d天
                 - 理由: %s
 
                 用户问题：%s
                 """,
-                signal.getType().getLabel(), confidence != null ? confidence.getValue() * 100 : 0,
+                signal.getType().getLabel(), com.alphamind.scoring.AnalysisScoringPolicy.describe(confidence),
                 signal.getEntryPrice(), signal.getTargetPrice(), signal.getStopLoss(),
                 signal.getHoldingPeriodDays(), signal.getRationale(), userMessage.getContent());
 
@@ -116,9 +116,10 @@ public class PortfolioAgent extends BaseAgent {
             6. 给出具体的目标价、止损价和建议持仓周期
 
             信号生成规则：
-            - 技术评分>70 + 舆情>60 → 买入信号
-            - 技术评分<40 + 舆情<40 → 卖出信号
-            - 其他情况 → 持有观望
+            - 等权综合分=技术评分×0.5+舆情评分(0–1)×100×0.5
+            - 综合分>=70且规则一致度达到传入策略阈值才为买入；[50,70)持有；<50卖出
+            - 一致度不足时买入降为持有；不得将一致度解释为收益概率
+            - 操作、目标价、止损与周期已由规则确定，只解释不得改写
 
             止损原则（根据传入的策略参数动态决定）：
             - 保守策略：仓位较低，止损较严，持仓周期较长
@@ -142,7 +143,8 @@ public class PortfolioAgent extends BaseAgent {
                 - 策略类型: %s（仓位 %.0f%%，止损 %.0f%%，持仓 %d天）
                 - 推荐操作: %s | 目标价: ¥%.2f | 止损价: ¥%.2f
 
-                请给出简洁专业的投资理由（200字内）。
+                评分依据与缺口：%s
+                请给出简洁专业的投资理由（200字内），不得编造基本面或改写给定操作。
                 """,
                 market.getStockName(), market.getStockCode(),
                 market.getCurrentPrice(), market.getChangePercent() != null ? market.getChangePercent() : 0,
@@ -152,7 +154,10 @@ public class PortfolioAgent extends BaseAgent {
                 strategy.getStopLossRatio() * 100,
                 strategy.getHoldingPeriodDays(),
                 signal.getType().getLabel(),
-                signal.getTargetPrice(), signal.getStopLoss());
+                signal.getTargetPrice(), signal.getStopLoss(),
+                com.alphamind.scoring.AnalysisScoringPolicy.confidence(market, tech, sentiment).getExplanation()
+                        + "；技术口径：" + tech.getScoreExplanation() + "；舆情口径：" + sentiment.getScoreExplanation()
+                        + "；数据缺口：" + sentiment.getDataGaps());
         if (contextSummary != null && !contextSummary.isBlank()) {
             prompt += "\n\n【历史分析参考（仅供参考，不构成决策依据）】\n" + contextSummary;
         }
@@ -164,7 +169,7 @@ public class PortfolioAgent extends BaseAgent {
                 **投资建议**
 
                 **交易信号**: %s
-                **置信度**: %.0f%% (%s)
+                **一致度/历史值**: %s
 
                 **交易计划**:
                 - 入场价: ¥%.2f
@@ -175,8 +180,7 @@ public class PortfolioAgent extends BaseAgent {
                 **投资理由**: %s
                 """,
                 signal.getType().getLabel(),
-                confidence != null ? confidence.getValue() * 100 : 0,
-                confidence != null ? confidence.getLevel().getLabel() : "N/A",
+                com.alphamind.scoring.AnalysisScoringPolicy.describe(confidence),
                 signal.getEntryPrice(),
                 signal.getTargetPrice(),
                 ((signal.getTargetPrice() - signal.getEntryPrice()) / signal.getEntryPrice()) * 100,
@@ -200,34 +204,9 @@ public class PortfolioAgent extends BaseAgent {
 
     private ConfidenceDTO calculateConfidence(
             TechnicalIndicatorsDTO technicalIndicators,
-            SentimentDataDTO sentimentData,
-            StrategyProfile strategy) {
+            SentimentDataDTO sentimentData) {
 
-        double techScore = technicalIndicators.getTechnicalScore();
-        double sentimentScore = sentimentData.getSentimentScore();
-
-        // 计算置信度 (综合评分 + 策略调整)
-        double baseConfidence = (techScore / 100.0 * 0.6 + sentimentScore * 0.4);
-        double strategyAdjustment = strategy.getPositionRatio() * 0.1;
-        double confidenceValue = Math.min(0.95, baseConfidence + strategyAdjustment);
-
-        ConfidenceLevel level = ConfidenceLevel.fromValue(confidenceValue);
-
-        String explanation;
-        if (confidenceValue >= 0.7) {
-            explanation = String.format("多信号共振，置信度较高，建议%.0f%%仓位",
-                    strategy.getPositionRatio() * 100);
-        } else if (confidenceValue >= 0.4) {
-            explanation = String.format("信号中等，建议%.0f%%仓位，注意控制风险",
-                    strategy.getPositionRatio() * 70);
-        } else {
-            explanation = "信号较弱，建议观望或轻仓参与";
-        }
-
-        return ConfidenceDTO.builder()
-                .value(Math.round(confidenceValue * 100) / 100.0)
-                .level(level)
-                .explanation(explanation)
-                .build();
+        return com.alphamind.scoring.AnalysisScoringPolicy.confidence(
+                getContext("marketData"), technicalIndicators, sentimentData);
     }
 }

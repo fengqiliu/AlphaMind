@@ -267,3 +267,35 @@ test("PDF 导出支持缺失关注度与新的评分依据", async ({ page }) =>
   expect(content.subarray(0, 4).toString()).toBe("%PDF");
   expect(content.length).toBeGreaterThan(10000);
 });
+
+
+test("新一致度方法与技术分项可追溯，进度条保持百分比宽度", async ({ page }) => {
+  const ruleConfidence = { ...confidence, method: "RULE_AGREEMENT_V1", explanation: "规则一致度测试说明，非收益概率" };
+  const current = { ...report, confidence: ruleConfidence,
+    // 后端非空序列化会省略这些估值键；与显式null均须可导出。
+    marketData: {...report.marketData, pe: undefined, pb: undefined, marketCap: undefined},
+    judgment: { ...report.judgment, confidence: ruleConfidence },
+    technicalIndicators: { ...report.technicalIndicators, sampleSize: 120,
+      scoreExplanation: "技术规则 V1 测试口径，未经回测校准",
+      scoreContributions: { "基础分": 50, "MACD柱": 15, "RSI12": 5 } },
+  };
+  await page.route("**/analysis/history-debate", route => route.fulfill({ json: {code: 200, data: current} }));
+  await page.goto("/history?report=history-debate");
+  const detail = page.getByRole("region", { name: "报告详情" });
+  await expect(detail.getByText("高规则一致度", {exact: true}).first()).toBeVisible();
+  await expect(detail.getByText("75/100", {exact: true}).first()).toBeVisible();
+  const bar = detail.getByRole("progressbar", {name: "规则一致度"}).first();
+  await expect(bar).toHaveAttribute("aria-valuenow", "75");
+  await expect(bar.locator(":scope > div")).toHaveAttribute("style", /width: 75%/);
+  await expect(detail.getByText(current.technicalIndicators.scoreExplanation)).toBeVisible();
+  await expect(detail.getByText("MACD柱 +15", {exact: true})).toBeVisible();
+  const download = page.waitForEvent("download");
+  await detail.getByRole("button", {name: "导出 Markdown"}).click();
+  const text = await readFile((await (await download).path())!, "utf8");
+  expect(text).toContain("规则一致度：75/100");
+  expect(text).toContain("RULE_AGREEMENT_V1");
+  expect(text).toContain("技术分项 MACD柱：15");
+  const pdfDownload = page.waitForEvent("download");
+  await detail.getByRole("button", { name: "导出 PDF" }).click();
+  await (await pdfDownload).saveAs("../output/playwright/calibration-report.pdf");
+});

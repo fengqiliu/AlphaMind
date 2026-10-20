@@ -46,6 +46,7 @@ public class AnalysisReportMapper {
         }
         if (dto.getConfidence() != null) {
             builder.confidenceExplanation(dto.getConfidence().getExplanation());
+            builder.confidenceMethod(dto.getConfidence().getMethod());
             if (dto.getConfidence().getValue() != null) {
                 builder.confidenceValue(BigDecimal.valueOf(dto.getConfidence().getValue()));
             }
@@ -130,6 +131,7 @@ public class AnalysisReportMapper {
             }
             confidence.setLevel(parseConfidenceLevel(entity.getConfidenceLevel()));
             confidence.setExplanation(entity.getConfidenceExplanation());
+            confidence.setMethod(entity.getConfidenceMethod());
             dto.setConfidence(confidence);
         }
 

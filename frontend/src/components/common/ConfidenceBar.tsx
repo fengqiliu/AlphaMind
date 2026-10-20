@@ -1,5 +1,6 @@
 "use client";
 
+import { confidenceTitle, confidenceValue, isRuleAgreement } from "@/utils/confidenceMetadata";
 import { cn } from "@/utils";
 import type { ConfidenceInterval } from "@/types";
 import { ConfidenceLevel } from "@/types";
@@ -44,14 +45,16 @@ export function ConfidenceBar({
       {showLabel && (
         <div className="flex items-center justify-between text-sm">
           <span className={cn("font-medium font-mono", config.textColor)}>
-            {config.label}
+            {isRuleAgreement(confidence) ? config.label.replace("置信度", "规则一致度") : `${config.label}（历史口径）`}
           </span>
           <span className="text-[var(--text-primary)] font-mono font-bold">
-            {percentage}%
+            {confidenceValue(confidence)}
           </span>
         </div>
       )}
-      <div className="h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden">
+      <div className="h-2 bg-[var(--bg-tertiary)] rounded-full overflow-hidden"
+        role="progressbar" aria-label={confidenceTitle(confidence)}
+        aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}>
         <div
           className={cn(
             "h-full rounded-full transition-all duration-500 relative overflow-hidden",
@@ -71,6 +74,11 @@ export function ConfidenceBar({
           />
         </div>
       </div>
+      <p className="text-xs text-[var(--text-muted)]">
+        {isRuleAgreement(confidence)
+          ? "启发式规则一致度，非胜率或收益概率，未经历史回测校准。"
+          : "按已保存的历史值展示，未记录当前规则口径，不作胜率解释。"}
+      </p>
       {confidence.explanation && (
         <p className="text-xs text-[var(--text-muted)] font-mono">
           {confidence.explanation}

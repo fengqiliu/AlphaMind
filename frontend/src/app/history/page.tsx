@@ -1,5 +1,6 @@
 "use client";
 
+import { confidenceTitle, confidenceValue } from "@/utils/confidenceMetadata";
 import { useEffect, useRef, useState } from "react";
 import {
   History,
@@ -116,7 +117,8 @@ export default function HistoryPage() {
     setDetailError(null);
     try {
       await downloadReportPdf(selectedReport);
-    } catch {
+    } catch (error) {
+      console.error("PDF 导出失败", error);
       setDetailError("PDF 导出失败，请稍后重试");
     } finally {
       setIsPdfGenerating(false);
@@ -254,9 +256,9 @@ export default function HistoryPage() {
                       <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-[var(--text-muted)]">
                         <time>{formatDate(report.createdAt)}</time>
                         <span>
-                          置信度{" "}
+                          {report.confidence ? confidenceTitle(report.confidence) : "置信度"}{" "}
                           {report.confidence?.value != null
-                            ? `${Math.round(report.confidence.value * 100)}%`
+                            ? confidenceValue(report.confidence)
                             : "未提供"}
                         </span>
                       </div>

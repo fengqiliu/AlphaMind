@@ -1,5 +1,6 @@
 "use client";
 
+import { confidenceTitle } from "@/utils/confidenceMetadata";
 import { cn } from "@/utils";
 import type { TradeSignal, ConfidenceInterval } from "@/types";
 import { SignalType } from "@/types";
@@ -150,7 +151,7 @@ export function AnalysisResult({
       {/* Confidence */}
       <div className="pt-4 border-t border-[var(--border)]">
         <div className="text-xs font-mono text-[var(--text-muted)] tracking-wider mb-3">
-          综合置信度
+          {confidenceTitle(confidence)}
         </div>
         {confidence ? (
           <ConfidenceBar confidence={confidence} />

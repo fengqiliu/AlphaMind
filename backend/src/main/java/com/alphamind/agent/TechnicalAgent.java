@@ -70,12 +70,13 @@ public class TechnicalAgent extends BaseAgent {
             2. 分析RSI指标，判断超买/超卖状态
             3. 分析KDJ指标，判断短期趋势
             4. 分析布林带，判断价格波动区间
-            5. 结合多个指标给出综合技术评分（70+看多，40-70中性，40以下看空）
+            5. 结合多个指标给出综合技术评分（>=70偏多，[40,70)中性，<40偏空；启发式而非概率）
 
             回答要求：
             - 用中文专业简洁地分析各指标
             - 明确指出当前最重要的技术信号
             - 给出综合技术评分
+            - 单点指标不证明金叉、死叉、背离或持续变化，不凭缺失数据推测这些事实
             """;
     }
 
@@ -84,9 +85,9 @@ public class TechnicalAgent extends BaseAgent {
                 "请简要解读以下技术指标：MACD DIF=%.2f DEA=%.2f 柱=%.2f；RSI(12)=%.1f；KDJ K=%.1f D=%.1f J=%.1f；技术评分=%d/100",
                 ind.getMacd().getDif(), ind.getMacd().getDea(), ind.getMacd().getHistogram(),
                 ind.getRsi().getRsi12(), ind.getKdj().getK(), ind.getKdj().getD(), ind.getKdj().getJ(),
-                ind.getTechnicalScore());
+                ind.getTechnicalScore()) + "。评分依据：" + ind.getScoreExplanation();
         String result = llmCall(getSystemPrompt(), prompt);
-        return result != null ? result : (ind.getTechnicalScore() >= 70 ? "技术面偏多，多指标共振向上" :
+        return result != null ? result : ind.getScoreExplanation() + (ind.getTechnicalScore() >= 70 ? "技术面偏多，按规则得分偏多" :
                 ind.getTechnicalScore() >= 40 ? "技术面中性，方向有待确认" : "技术面偏空，需警惕下行风险");
     }
 
@@ -102,11 +103,11 @@ public class TechnicalAgent extends BaseAgent {
                 用户问题：%s
                 """,
                 ind.getMacd().getDif(), ind.getMacd().getDea(), ind.getMacd().getHistogram(),
-                ind.getMacd().getHistogram() > 0 ? "多头" : "空头",
+                ind.getMacd().getHistogram() > 0 ? "正值" : ind.getMacd().getHistogram() < 0 ? "负值" : "零值",
                 ind.getRsi().getRsi6(), ind.getRsi().getRsi12(), ind.getRsi().getRsi24(),
                 ind.getKdj().getK(), ind.getKdj().getD(), ind.getKdj().getJ(),
                 ind.getBollinger().getUpper(), ind.getBollinger().getMiddle(), ind.getBollinger().getLower(),
-                ind.getTechnicalScore(), question);
+                ind.getTechnicalScore(), question) + "\n评分口径：" + ind.getScoreExplanation();
     }
 
     private String buildTechTemplateResponse(TechnicalIndicatorsDTO ind) {
@@ -134,14 +135,14 @@ public class TechnicalAgent extends BaseAgent {
                 **综合技术评分**: %d/100  %s
                 """,
                 macd.getDif(), macd.getDea(), macd.getHistogram(),
-                macd.getHistogram() > 0 ? "红柱(多头)" : "绿柱(空头)",
+                macd.getHistogram() > 0 ? "正值" : macd.getHistogram() < 0 ? "负值" : "零值",
                 rsi.getRsi6(), rsi.getRsi12(), rsi.getRsi24(),
                 rsi.getRsi12() > 70 ? "超买区域" : rsi.getRsi12() < 30 ? "超卖区域" : "正常区间",
                 kdj.getK(), kdj.getD(), kdj.getJ(),
                 bb.getUpper(), bb.getMiddle(), bb.getLower(),
                 ind.getTechnicalScore(),
                 ind.getTechnicalScore() >= 70 ? "✅ 技术面偏多" :
-                        ind.getTechnicalScore() >= 40 ? "⚖️ 技术面中性" : "❌ 技术面偏空");
+                        ind.getTechnicalScore() >= 40 ? "⚖️ 技术面中性" : "❌ 技术面偏空") + "\n评分口径：" + ind.getScoreExplanation();
     }
 
     private ChatMessage buildMsg(String content) {
@@ -165,44 +166,33 @@ public class TechnicalAgent extends BaseAgent {
      */
     private TechnicalIndicatorsDTO calculateTechnicalIndicators(MarketDataDTO marketData) {
         java.util.List<double[]> klines = marketData.getKlines();
+        if (marketData.getCurrentPrice() == null) throw new IllegalArgumentException("缺少有效报价");
         double price = marketData.getCurrentPrice();
 
-        // 从 klines 提取 close / high / low（格式：[open, close, low, high]）
-        double[] closes, highs, lows;
-        if (klines != null && klines.size() >= 26) {
-            int n = klines.size();
-            closes = new double[n];
-            highs  = new double[n];
-            lows   = new double[n];
-            for (int i = 0; i < n; i++) {
-                closes[i] = klines.get(i)[1];
-                lows[i]   = klines.get(i)[2];
-                highs[i]  = klines.get(i)[3];
+        if (!Double.isFinite(price) || price <= 0 || klines == null || klines.size() < 34) {
+            throw new IllegalArgumentException("技术分析至少需要34根有效日K线和有效报价，数据不足时不构造近似行情");
+        }
+        int n = klines.size();
+        double[] closes = new double[n], highs = new double[n], lows = new double[n];
+        for (int i = 0; i < n; i++) {
+            double[] bar = klines.get(i);
+            if (bar == null || bar.length < 4 || java.util.Arrays.stream(bar).anyMatch(v -> !Double.isFinite(v) || v <= 0)
+                    || bar[2] > Math.min(bar[0], bar[1]) || bar[3] < Math.max(bar[0], bar[1]) || bar[2] > bar[3]) {
+                throw new IllegalArgumentException("日K线包含无效OHLC，停止技术评分");
             }
-        } else {
-            // K 线数据不足时构造近似序列（兜底）
-            closes = new double[60];
-            highs  = new double[60];
-            lows   = new double[60];
-            double cp = price;
-            for (int i = 59; i >= 0; i--) {
-                closes[i] = cp;
-                highs[i]  = cp * 1.01;
-                lows[i]   = cp * 0.99;
-                cp /= 1.001;
-            }
+            closes[i] = bar[1]; lows[i] = bar[2]; highs[i] = bar[3];
         }
 
         // ── MACD (EMA12 / EMA26 / EMA9) ──────────────
-        double[] ema12 = ema(closes, 12);
-        double[] ema26 = ema(closes, 26);
+        double[] ema12 = ema(closes, 12, 0);
+        double[] ema26 = ema(closes, 26, 0);
         int last = closes.length - 1;
         double[] difArr = new double[closes.length];
         for (int i = 0; i < closes.length; i++) difArr[i] = ema12[i] - ema26[i];
-        double[] deaArr = ema(difArr, 9);
+        double[] deaArr = ema(difArr, 9, 25);
         double difVal  = r3(difArr[last]);
         double deaVal  = r3(deaArr[last]);
-        double histVal = r3((difVal - deaVal) * 2);
+        double histVal = r3((difArr[last] - deaArr[last]) * 2);
 
         // ── RSI (Wilder) ──────────────────────────────
         double rsi6  = r2(rsi(closes, 6));
@@ -222,16 +212,18 @@ public class TechnicalAgent extends BaseAgent {
         double bolLower  = r2(boll[2]);
 
         // ── 综合技术评分 ───────────────────────────────
-        int score = 50;
-        if (histVal > 0)           score += 15; else score -= 10;
-        if (rsi12 > 40 && rsi12 < 70) score += 10;
-        if (rsi12 < 30)            score += 15;   // 超卖反弹机会
-        if (rsi12 > 70)            score -= 10;   // 超买风险
-        if (jVal  < 20)            score += 10;   // KDJ 超卖
-        if (jVal  > 90)            score -= 8;    // KDJ 超买
-        if (price < bolLower)      score += 8;    // 价格跌破下轨
-        if (price > bolUpper)      score -= 8;    // 价格突破上轨
-        score = Math.max(10, Math.min(95, score));
+        java.util.Map<String, Integer> contributions = new java.util.LinkedHashMap<>();
+        contributions.put("基础分", 50);
+        contributions.put("MACD柱", histVal > 0 ? 15 : histVal < 0 ? -10 : 0);
+        contributions.put("RSI12", rsi12 > 50 && rsi12 < 70 ? 10 : rsi12 < 30 ? 15 : rsi12 > 70 ? -10 : 0);
+        contributions.put("KDJ_J", jVal < 20 ? 10 : jVal > 90 ? -8 : 0);
+        contributions.put("布林位置", price < bolLower ? 8 : price > bolUpper ? -8 : 0);
+        int rawScore = contributions.values().stream().mapToInt(Integer::intValue).sum();
+        int score = Math.max(10, Math.min(95, rawScore));
+        contributions.put("限幅调整", score - rawScore);
+        String scoreExplanation = "技术规则 V1：基础50分加MACD/RSI12/KDJ/布林位置贡献，限于10–95分；>=70偏多、<40偏空，其余中性。"
+                + "超卖与跌破下轨是反转假设加分，不是已发生反弹；仅当前指标关系，未证明金叉/死叉、持续变化或同业排名。使用"
+                + n + "根有效日K线；未经回测校准。";
 
         return TechnicalIndicatorsDTO.builder()
                 .macd(TechnicalIndicatorsDTO.MacdDTO.builder()
@@ -243,6 +235,9 @@ public class TechnicalAgent extends BaseAgent {
                 .bollinger(TechnicalIndicatorsDTO.BollingerDTO.builder()
                         .upper(bolUpper).middle(bolMiddle).lower(bolLower).build())
                 .technicalScore(score)
+                .sampleSize(n)
+                .scoreExplanation(scoreExplanation)
+                .scoreContributions(contributions)
                 .build();
     }
 
@@ -251,16 +246,16 @@ public class TechnicalAgent extends BaseAgent {
     // ─────────────────────────────────────────────────────────
 
     /** 指数移动平均 (EMA)：初始值取前 period 个收盘价的 SMA */
-    private double[] ema(double[] data, int period) {
+    private double[] ema(double[] data, int period, int start) {
         double[] result = new double[data.length];
-        double mult = 2.0 / (period + 1);
-        int warmup = Math.min(period - 1, data.length - 1);
-        double sum = 0;
-        for (int i = 0; i <= warmup; i++) sum += data[i];
-        result[warmup] = sum / (warmup + 1);
-        for (int i = warmup + 1; i < data.length; i++) {
-            result[i] = data[i] * mult + result[i - 1] * (1 - mult);
-        }
+        java.util.Arrays.fill(result, Double.NaN);
+        int seed = start + period - 1;
+        double total = 0;
+        for (int i = start; i <= seed; i++) total += data[i];
+        result[seed] = total / period;
+        double multiplier = 2.0 / (period + 1);
+        for (int i = seed + 1; i < data.length; i++)
+            result[i] = data[i] * multiplier + result[i - 1] * (1 - multiplier);
         return result;
     }
 
@@ -279,7 +274,7 @@ public class TechnicalAgent extends BaseAgent {
             avgGain = (avgGain * (period - 1) + Math.max(diff, 0)) / period;
             avgLoss = (avgLoss * (period - 1) + Math.max(-diff, 0)) / period;
         }
-        if (avgLoss == 0) return 100.0;
+        if (avgLoss == 0) return avgGain == 0 ? 50.0 : 100.0;
         return 100.0 - 100.0 / (1 + avgGain / avgLoss);
     }
 

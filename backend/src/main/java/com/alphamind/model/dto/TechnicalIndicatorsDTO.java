@@ -15,6 +15,9 @@ public class TechnicalIndicatorsDTO {
     private KdjDTO kdj;
     private BollingerDTO bollinger;
     private Integer technicalScore;
+    private Integer sampleSize;
+    private String scoreExplanation;
+    private java.util.Map<String, Integer> scoreContributions;
     // LLM生成的技术指标解读
     private String aiInterpretation;
 

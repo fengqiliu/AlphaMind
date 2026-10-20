@@ -20,11 +20,7 @@ public enum ConfidenceLevel {
     }
 
     public static ConfidenceLevel fromValue(double value) {
-        for (ConfidenceLevel level : values()) {
-            if (value >= level.minValue && value <= level.maxValue) {
-                return level;
-            }
-        }
-        return LOW;
+        if (!Double.isFinite(value) || value < 0 || value > 1) return LOW;
+        return value >= 0.7 ? HIGH : value >= 0.4 ? MEDIUM : LOW;
     }
 }

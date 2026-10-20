@@ -84,6 +84,10 @@ The strategy system uses a layered configuration with `StrategyType` enums (`CON
 
 The `StrategyModeResolver` (`backend/src/main/java/com/alphamind/strategy/`) handles the priority logic. AGGRESSIVE strategy defaults to PIPELINE; CONSERVATIVE and BALANCED default to DEBATE.
 
+### Scoring and Evidence Contracts
+
+`AnalysisScoringPolicy` owns 0–100 equal-weight composite scores and `RULE_AGREEMENT_V1`. Rule agreement is not a return probability and must not increase with strategy position ratio. Preserve `confidence.method` through V5, including nested debate views; old reports keep a null method. Technical analysis requires 34 valid OHLC bars, never synthesized fallback bars. Save technical score contributions and sample size. Debate templates use `DebateEvidence`; single-point indicators do not establish crosses, trends, valuation or institutional views. Arbitration saves all six actual votes (three equal base votes, technical bucket two, sentiment bucket one). See `docs/技术评分与规则一致度.md`.
+
 ### Agent Context and Thread Safety
 
 All agents share state via `ThreadLocal<Map<String,Object>>`. **Always call `clearContext()` after every request** to prevent thread-pool leaks. Common context keys: `stockCode`, `stockName`, `strategy`, `marketData`, `technicalIndicators`, `sentimentData`, `tradeSignal`, `confidence`, `sessionId`, `contextSummary`.

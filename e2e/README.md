@@ -44,3 +44,10 @@ ALPHAMIND_E2E_INTEGRATION=1 npx playwright test tests/real-analysis.integration.
 - `history-detail.spec.ts` 覆盖新评分依据、数据缺口、历史关注度估算标记和 JSON/Markdown/PDF 导出；保存桌面/手机截图与测试 PDF 到忽略的 `output/playwright/`。
 - `real-report-history.integration.spec.ts` 在真实行情及 PostgreSQL 下核对缺失 PE 状态、无媒体关注度实测值，以及完整报告 JSONB 保存/重载/下载一致性。
 - 评分算法说明见 `docs/评分口径与数据缺口.md`；真实 LLM 仍需单独验收。
+
+
+### 规则一致度与技术口径
+
+- `history-detail.spec.ts` 验证 `RULE_AGREEMENT_V1` 的 N/100 标签、进度条宽度、技术分项及 Markdown/PDF 导出，旧报告仍使用历史口径。
+- `real-report-history.integration.spec.ts` 验证 V5 方法字段完整往返、实际6票与仲裁一致、三方一致度与顶部报告一致、无独立固定目标价；实际报告导出到忽略的 `output/playwright/calibration-real-report.pdf` 供渲染验收。
+- 规则与未完成的历史回测边界见 `docs/技术评分与规则一致度.md`。
