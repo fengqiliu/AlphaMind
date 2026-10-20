@@ -323,12 +323,8 @@ public class ArbitratorAgent extends BaseAgent {
         }
 
         // 舆情风险
-        if (sentiment.getMediaAttention() > 0.8) {
-            warnings.add("媒体关注度过高，需警惕泡沫风险");
-        }
-        if (sentiment.getMediaAttention() < 0.3) {
-            warnings.add("市场关注度低，可能缺乏催化剂");
-        }
+        // 当前无实测媒体关注度；旧版估算也不能用于判断泡沫或催化剂。
+        warnings.add("媒体关注度缺少实测来源，相关风险未评估");
 
         // 仓位风险
         if (position == DebatePosition.BULLISH) {

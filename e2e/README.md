@@ -37,3 +37,10 @@ ALPHAMIND_E2E_INTEGRATION=1 npx playwright test tests/real-analysis.integration.
 ```
 
 可用 `ALPHAMIND_BACKEND_ORIGIN` 覆盖健康检查地址，默认是 `http://localhost:8080`。测试会依次验证股票搜索、SSE `text/event-stream` 响应、完整报告字段和历史记录接口及页面。
+
+
+### 评分依据与缺失数据回归
+
+- `history-detail.spec.ts` 覆盖新评分依据、数据缺口、历史关注度估算标记和 JSON/Markdown/PDF 导出；保存桌面/手机截图与测试 PDF 到忽略的 `output/playwright/`。
+- `real-report-history.integration.spec.ts` 在真实行情及 PostgreSQL 下核对缺失 PE 状态、无媒体关注度实测值，以及完整报告 JSONB 保存/重载/下载一致性。
+- 评分算法说明见 `docs/评分口径与数据缺口.md`；真实 LLM 仍需单独验收。

@@ -55,7 +55,10 @@ const report = {
     sentimentTrend: "中性",
     positiveFactors: ["测试利好因素"],
     negativeFactors: ["测试风险因素"],
-    mediaAttention: 0.5,
+    mediaAttention: null,
+    valuationStatus: "MISSING",
+    scoreExplanation: "启发式代理评分；可用信号归一化：涨跌幅 53.3%、换手率 26.7%、量能 20.0%。",
+    dataGaps: ["PE缺失或为零，未参与估值评分，不代表亏损", "无媒体关注度实测来源，未生成关注度百分比"],
     analysisSummary: "已保存舆情摘要",
     recentHeadlines: ["验收用资讯标题"],
     newsDataSource: "测试数据",
@@ -122,6 +125,9 @@ test("键盘打开完整报告、刷新恢复选择、展开三方依据", async
     "已保存中立观点",
     "已保存置信度说明",
     "已保存仲裁理由",
+    report.sentimentData.scoreExplanation,
+    report.sentimentData.dataGaps[0],
+    "媒体关注度未提供",
   ]) {
     await expect(detail.getByText(text, { exact: true }).first()).toBeVisible();
   }
@@ -169,6 +175,7 @@ test("JSON 与 Markdown 导出保留执行配置和三方观点", async ({ page 
   expect(data.strategy).toBe("CONSERVATIVE");
   expect(data.mode).toBe("DEBATE");
   expect(data.debateViews).toEqual(report.debateViews);
+  expect(data.sentimentData).toEqual(report.sentimentData);
   const markdownDownload = page.waitForEvent("download");
   await detail.getByRole("button", { name: "导出 Markdown" }).click();
   const markdown = await readFile(
@@ -183,6 +190,9 @@ test("JSON 与 Markdown 导出保留执行配置和三方观点", async ({ page 
     "已保存中立观点",
     "多头支撑依据",
     "多头反驳依据",
+    report.sentimentData.scoreExplanation,
+    report.sentimentData.dataGaps[0],
+    "媒体关注度：未提供",
   ])
     expect(markdown).toContain(text);
 });
@@ -222,4 +232,38 @@ test("失效报告链接显示业务错误，列表仍可筛选", async ({ page 
   ).toBeVisible();
   await page.getByRole("textbox", { name: "筛选历史股票" }).fill("无匹配");
   await expect(page.getByText("未找到匹配的历史记录")).toBeVisible();
+});
+
+
+test("旧版关注度标记为估算，缺失口径不按新规则解释", async ({ page }) => {
+  const legacy = { ...report, sentimentData: {
+    ...report.sentimentData, mediaAttention: 0.5,
+    valuationStatus: undefined, scoreExplanation: undefined, dataGaps: undefined,
+  } };
+  await page.route("**/analysis/history-debate", (route) =>
+    route.fulfill({ json: { code: 200, data: legacy } }),
+  );
+  await page.goto("/history?report=history-debate");
+  const detail = page.getByRole("region", { name: "报告详情" });
+  await expect(detail.getByText("历史关注度估算 50%（非实测）", { exact: false })).toBeVisible();
+  await expect(detail.getByText("旧报告未记录评分口径，不能按当前规则重新解释。", { exact: true })).toBeVisible();
+  const download = page.waitForEvent("download");
+  await detail.getByRole("button", { name: "导出 Markdown" }).click();
+  const markdown = await readFile((await (await download).path())!, "utf8");
+  expect(markdown).toContain("历史估算 50%（非实测）");
+  expect(markdown).toContain("旧报告未记录评分口径");
+});
+
+
+test("PDF 导出支持缺失关注度与新的评分依据", async ({ page }) => {
+  await page.goto("/history?report=history-debate");
+  const detail = page.getByRole("region", { name: "报告详情" });
+  const download = page.waitForEvent("download");
+  await detail.getByRole("button", { name: "导出 PDF" }).click();
+  const pdf = await download;
+  expect(pdf.suggestedFilename()).toMatch(/\.pdf$/);
+  await pdf.saveAs("../output/playwright/scoring-report.pdf");
+  const content = await readFile((await pdf.path())!);
+  expect(content.subarray(0, 4).toString()).toBe("%PDF");
+  expect(content.length).toBeGreaterThan(10000);
 });

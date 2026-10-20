@@ -19,6 +19,11 @@ public class SentimentDataDTO {
     private List<String> negativeFactors;
     private Map<String, Integer> newsCountBySource;
     private Double mediaAttention;
+    /** MISSING / NON_POSITIVE / POSITIVE；缺失 PE 不等同于亏损。 */
+    private String valuationStatus;
+    /** 实际参与计算的信号及权重，旧报告没有此字段。 */
+    private String scoreExplanation;
+    private List<String> dataGaps;
     private String analysisSummary;
     // LLM生成的舆情综合摘要
     private String aiSummary;

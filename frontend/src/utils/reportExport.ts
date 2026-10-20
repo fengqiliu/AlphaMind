@@ -3,6 +3,12 @@ import { SignalType } from "@/types";
 import { modeLabel, strategyLabel } from "@/utils/reportMetadata";
 import { personalModelMarkdown } from "@/utils/personalModelExport";
 
+function escapeHtml(input: string): string {
+  return input.replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character]!);
+}
+
 function sanitizeFileName(input: string): string {
   return input
     .replace(/[\\/:*?"<>|]/g, "-")
@@ -80,6 +86,9 @@ export function reportToMarkdown(report: AnalysisReport): string {
     "",
     `- 舆情评分：${(report.sentimentData.sentimentScore * 100).toFixed(0)} / 100`,
     `- 趋势判断：${report.sentimentData.sentimentTrend}`,
+    `- 评分依据：${report.sentimentData.scoreExplanation || "旧报告未记录评分口径，不能按当前规则重新解释。"}`,
+    `- 媒体关注度：${report.sentimentData.mediaAttention == null ? "未提供" : `历史估算 ${(report.sentimentData.mediaAttention * 100).toFixed(0)}%（非实测）`}`,
+    ...(report.sentimentData.dataGaps ?? []).map((gap) => `- 数据缺口：${gap}`),
     `- 摘要：${report.sentimentData.analysisSummary}`,
     "",
     "### 利好因素",
@@ -336,9 +345,10 @@ function buildReportHtml(report: AnalysisReport): string {
         </div>
         <div>
           <div style="font-size:13px;font-weight:600;">${s.sentimentTrend}</div>
-          <div style="font-size:11px;color:#64748b;">媒体关注度 ${(s.mediaAttention * 100).toFixed(0)}%</div>
+          <div style="font-size:11px;color:#64748b;">${s.mediaAttention == null ? "媒体关注度未提供" : `历史关注度估算 ${(s.mediaAttention * 100).toFixed(0)}%（非实测）`}</div>
         </div>
       </div>
+      <div style="font-size:12px;line-height:1.6;margin-bottom:10px;">评分依据：${escapeHtml(s.scoreExplanation || "旧报告未记录评分口径，不能按当前规则重新解释。")}${(s.dataGaps ?? []).map((gap) => `<div>数据缺口：${escapeHtml(gap)}</div>`).join("")}</div>
       ${s.analysisSummary ? `<div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;font-size:12px;color:#374151;line-height:1.6;margin-bottom:10px;">${s.analysisSummary}</div>` : ""}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         ${posRows ? `<div><div style="font-size:11px;color:#22c55e;font-weight:700;margin-bottom:5px;">▲ 利好因素</div>${posRows}</div>` : ""}

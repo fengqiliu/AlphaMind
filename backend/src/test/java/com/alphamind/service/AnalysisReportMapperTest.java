@@ -28,7 +28,9 @@ class AnalysisReportMapperTest {
                         .stopLoss(95.0).holdingPeriodDays(45).rationale("原始建议").build())
                 .marketData(MarketDataDTO.builder().stockCode("600519").currentPrice(100.0).build())
                 .technicalIndicators(TechnicalIndicatorsDTO.builder().technicalScore(80).build())
-                .sentimentData(SentimentDataDTO.builder().sentimentScore(0.7).recentHeadlines(List.of("真实标题")).build())
+                .sentimentData(SentimentDataDTO.builder().sentimentScore(0.7).recentHeadlines(List.of("真实标题"))
+                        .valuationStatus("MISSING").scoreExplanation("可用信号归一化")
+                        .dataGaps(List.of("PE缺失，不代表亏损")).mediaAttention(null).build())
                 .judgment(JudgmentDTO.builder().finalPosition(DebatePosition.NEUTRAL).confidence(confidence)
                         .reasoning("最终判断").build())
                 .debateViews(List.of(view(AgentType.BULL, DebatePosition.BULLISH), view(AgentType.BEAR, DebatePosition.BEARISH),

@@ -45,9 +45,25 @@ export function SentimentPanel({
           <span className="text-xs font-mono text-[var(--text-muted)]">
             {sentimentData.newsSignal != null &&
               `新闻信号 ${Math.round(sentimentData.newsSignal * 100)} · `}
-            媒体关注度 {Math.round(sentimentData.mediaAttention * 100)}%
+            {sentimentData.mediaAttention == null
+              ? "媒体关注度未提供"
+              : `历史关注度估算 ${Math.round(sentimentData.mediaAttention * 100)}%（非实测）`}
           </span>
         </div>
+
+        <details className="rounded-xl border border-[var(--border)] p-3" open>
+          <summary className="cursor-pointer text-sm font-medium focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+            评分依据与数据缺口
+          </summary>
+          <p className="mt-2 text-sm leading-relaxed text-[var(--text-secondary)]">
+            {sentimentData.scoreExplanation || "旧报告未记录评分口径，不能按当前规则重新解释。"}
+          </p>
+          {sentimentData.dataGaps && sentimentData.dataGaps.length > 0 && (
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-relaxed text-[var(--text-muted)]">
+              {sentimentData.dataGaps.map((gap, i) => <li key={i}>{gap}</li>)}
+            </ul>
+          )}
+        </details>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {sentimentData.positiveFactors?.length > 0 && (

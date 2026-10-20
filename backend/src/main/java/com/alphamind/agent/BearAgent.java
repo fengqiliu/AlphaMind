@@ -201,9 +201,7 @@ public class BearAgent extends BaseAgent {
 
         if (sentiment != null) {
             analysis.append("\n3️⃣ **市场情绪风险**\n");
-            if (sentiment.getMediaAttention() != null && sentiment.getMediaAttention() > 0.8) {
-                analysis.append("   - 媒体关注度过高，存在泡沫风险\n");
-            }
+            analysis.append("   - 媒体关注度缺少实测来源，不据此判断泡沫风险\n");
         }
 
         double stopLoss = marketData.getCurrentPrice() * 0.93;

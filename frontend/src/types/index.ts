@@ -150,7 +150,10 @@ export interface SentimentData {
   positiveFactors: string[]; // 正面因素列表
   negativeFactors: string[]; // 负面因素列表
   newsCountBySource?: Record<string, number> | null; // 各来源新闻数量（新闻源不可用时为 null）
-  mediaAttention: number; // 媒体关注度 0~1
+  mediaAttention: number | null; // 旧版估算值；新报告无实测来源时为 null
+  valuationStatus?: "MISSING" | "NON_POSITIVE" | "POSITIVE";
+  scoreExplanation?: string | null;
+  dataGaps?: string[] | null;
   analysisSummary: string; // 舆情摘要
   aiSummary?: string; // LLM 生成摘要（可选）
   recentHeadlines?: string[] | null; // 最新新闻标题（新闻源不可用时为 null）

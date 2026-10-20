@@ -31,6 +31,11 @@ test.describe("真实报告持久化与详情", () => {
       const original = envelope.data;
       expect(original.strategy).toBe(strategy);
       expect(original.mode).toBe(mode);
+      // 当前报价源不提供估值；缺失不能被解释为亏损，评分来源随JSONB往返。
+      expect(original.sentimentData.valuationStatus).toBe("MISSING");
+      expect(original.sentimentData.mediaAttention ?? null).toBeNull();
+      expect(original.sentimentData.scoreExplanation).toContain("可用信号归一化");
+      expect(original.sentimentData.dataGaps).toContain("PE缺失或为零，未参与估值评分，不代表亏损");
       const restored = await request.get(
         `${backend}/api/v1/analysis/${original.id}`,
       );
