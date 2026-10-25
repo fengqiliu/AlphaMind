@@ -64,7 +64,7 @@ LLM keys are optional too — with no key, agents fall through to deterministic 
 
 ## Architecture
 
-### Orchestration: DEBATE is pipeline *plus* a stage, not an alternative
+### Orchestration: DEBATE is pipeline _plus_ a stage, not an alternative
 
 `PipelineOrchestrator.execute()` always runs stages 1–4. When the resolved mode is `DEBATE` it then delegates stage 5 to `DebateOrchestrator.runDebate()` (Bull → Bear → Neutral → Arbitrator, sequential by design because agents are singletons with mutable per-thread context). Both orchestrators call `clearContext()` on every agent they touch in a `finally` block.
 
@@ -78,13 +78,13 @@ Do not treat `PIPELINE` and `DEBATE` as two separate code paths — they share s
 
 `StrategyType` enum + one `StrategyProfile` bean per type, looked up through `StrategyRegistry`:
 
-| Strategy | Position | Stop loss | Holding | Default mode |
-|---|---|---|---|---|
-| CONSERVATIVE | 30% | 5% | 45d | DEBATE |
-| BALANCED | 50% | 7% | 30d | DEBATE |
-| AGGRESSIVE | 80% | 10% | 15d | PIPELINE |
+| Strategy     | Position | Stop loss | Holding | Default mode |
+| ------------ | -------- | --------- | ------- | ------------ |
+| CONSERVATIVE | 30%      | 5%        | 45d     | DEBATE       |
+| BALANCED     | 50%      | 7%        | 30d     | DEBATE       |
+| AGGRESSIVE   | 80%      | 10%       | 15d     | PIPELINE     |
 
-`StrategySignalPlanner.plan()` turns scores into a `TradeSignalDTO`: composite = `technicalScore * 0.5 + sentimentScore * 50 * 0.5`; ≥70 BUY, ≥50 HOLD, else SELL. A BUY is downgraded to HOLD when confidence is below the profile's threshold. Keep new strategy parameters on `StrategyProfile` rather than branching on `StrategyType` at call sites.
+`StrategySignalPlanner.plan()` turns scores into a `TradeSignalDTO` using `AnalysisScoringPolicy.composite()` (`scoring/`): composite = `technicalScore * 0.5 + sentimentScore * 100 * 0.5`, where `technicalScore` is 0–100 and `sentimentScore` is normalized 0–1 (out-of-range input throws). ≥70 BUY, ≥50 HOLD, else SELL. A BUY is downgraded to HOLD when the rule-agreement confidence (`AnalysisScoringPolicy.confidence()`, method `RULE_AGREEMENT_V1` — not a win probability) is below the profile's threshold. Put scoring changes in `AnalysisScoringPolicy`, not in agents or the planner. Keep new strategy parameters on `StrategyProfile` rather than branching on `StrategyType` at call sites.
 
 ### Agent contract and thread safety
 
@@ -115,7 +115,7 @@ Messages starting with `@Market`, `@TechnicalAgent`, `@Bull`, … (case-insensit
 
 ### Persistence
 
-Analysis reports are persisted through `AnalysisReportRepository` (JPA, jsonb columns mapped by `AnalysisReportMapper`) — not an in-memory buffer. `MAX_HISTORY = 50` in `AnalysisController` caps the *query* size. Chat sessions/messages have both JPA entities and Redis-backed `MemoryService` storage. Watchlist is JPA-backed with `userId` defaulting to `"default"`.
+Analysis reports are persisted through `AnalysisReportRepository` (JPA, jsonb columns mapped by `AnalysisReportMapper`) — not an in-memory buffer. `MAX_HISTORY = 50` in `AnalysisController` caps the _query_ size. Chat sessions/messages have both JPA entities and Redis-backed `MemoryService` storage. Watchlist is JPA-backed with `userId` defaulting to `"default"`.
 
 ## API Contract (backend :8080)
 
@@ -133,7 +133,7 @@ Also `POST /api/v1/analysis/analyze` (synchronous) and `GET /api/v1/analysis/his
 
 **Actuator** — `/actuator/health`, `/info`, `/metrics` only.
 
-Stock search and weekly recommendations are served from a **static in-code `STOCK_DB` map** in `StockService`, not an external metadata source.
+Stock search and weekly recommendations take stock identity (code, name, industry, board) from the **static in-code `CATALOG` map in `StockCatalog`**, not an external metadata source. Prices and change percentages never live there — `StockService` fills them from real quotes via `StockQuoteService`.
 
 ## Frontend Conventions
 
