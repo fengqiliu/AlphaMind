@@ -161,7 +161,8 @@ public class PortfolioAgent extends BaseAgent {
         if (contextSummary != null && !contextSummary.isBlank()) {
             prompt += "\n\n【历史分析参考（仅供参考，不构成决策依据）】\n" + contextSummary;
         }
-        return llmCall(getSystemPrompt(), prompt);
+        // 与辩论模式四个 Agent 一致：决策 Prompt 附带真实新闻标题，让最终理由贴合消息面
+        return llmCall(getSystemPrompt(), appendNewsHeadlines(prompt, sentiment));
     }
 
     private String buildPortfolioTemplate(TradeSignalDTO signal, ConfidenceDTO confidence) {

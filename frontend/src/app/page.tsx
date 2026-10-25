@@ -11,10 +11,13 @@ import {
   Layers3,
   Loader2,
   Download,
+  Newspaper,
 } from "lucide-react";
 import { useAnalysisStore } from "@/stores/analysis";
 import { useAnalysisSession } from "@/hooks/useAnalysisSession";
 import { useWeeklyPicks } from "@/hooks/useWeeklyPicks";
+import { useStockNews } from "@/hooks/useStockNews";
+import { formatDate } from "@/utils";
 import { Button } from "@/components/common/Button";
 import { AnalysisControls } from "@/components/analysis/AnalysisControls";
 import { AnalysisProgress } from "@/components/analysis/AnalysisProgress";
@@ -74,6 +77,11 @@ export default function AnalysisPage() {
     error,
     debateViews,
   } = useAnalysisStore();
+
+  // 分析出结果后舆情卡自带资讯，这里只在分析前展示所选标的的最新消息
+  const { news: stockNews, isUnavailable: newsUnavailable } = useStockNews(
+    sentimentData ? null : currentStockCode,
+  );
 
   const exportableReport: AnalysisReport | null =
     reportId &&
@@ -289,6 +297,64 @@ export default function AnalysisPage() {
           message={loadingMessage}
         />
       </div>
+
+      {stockNews && (
+        <section className="glass-card p-5 sm:p-6">
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold">
+            <Newspaper className="size-4 text-[var(--text-muted)]" />
+            最新资讯 · {currentStockName}
+            {stockNews.source && (
+              <span
+                className={
+                  "text-xs font-mono font-normal " +
+                  (stockNews.stale
+                    ? "text-[var(--neutral)]"
+                    : "text-[var(--bullish)]")
+                }
+              >
+                {stockNews.stale ? "过期缓存" : "实时"} · {stockNews.source}
+              </span>
+            )}
+          </h2>
+          {stockNews.stale && stockNews.warning && (
+            <p className="mb-3 text-xs font-mono text-[var(--neutral)]">
+              {stockNews.warning}
+            </p>
+          )}
+          <ul className="space-y-2">
+            {stockNews.articles.slice(0, 5).map((article, index) => (
+              <li
+                key={index}
+                className="flex gap-2 text-sm leading-relaxed text-[var(--text-secondary)]"
+              >
+                <span className="shrink-0 text-[var(--text-muted)]">·</span>
+                {article.url ? (
+                  <a
+                    href={article.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-[var(--accent)]"
+                  >
+                    {article.title}
+                  </a>
+                ) : (
+                  article.title
+                )}
+                {article.publishedAt && (
+                  <span className="ml-auto shrink-0 font-mono text-xs text-[var(--text-muted)]">
+                    {formatDate(article.publishedAt)}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {!stockNews && newsUnavailable && !sentimentData && currentStockCode && (
+        <section className="glass-card p-4 text-xs font-mono text-[var(--text-muted)]">
+          新闻源暂不可用，选中标的的最新资讯无法展示。
+        </section>
+      )}
 
       {technicalIndicators && (
         <section className="glass-card p-5 sm:p-6">

@@ -1,9 +1,11 @@
 package com.alphamind.controller;
 
 import com.alphamind.model.dto.ApiResponse;
+import com.alphamind.model.dto.StockNewsDTO;
 import com.alphamind.model.dto.StockSearchResult;
 import com.alphamind.model.dto.WeeklyStockRecommendation;
 import com.alphamind.model.dto.WatchlistItem;
+import com.alphamind.news.service.StockNewsService;
 import com.alphamind.service.StockService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +23,7 @@ import java.util.List;
 public class StockController {
 
     private final StockService stockService;
+    private final StockNewsService stockNewsService;
 
     /**
      * 搜索股票
@@ -53,6 +56,16 @@ public class StockController {
         return stockService.getStock(code)
                 .map(ApiResponse::success)
                 .orElse(ApiResponse.error(404, "股票不存在"));
+    }
+
+    /**
+     * 获取个股最新资讯。无需发起完整分析即可查看真实新闻标题。
+     */
+    @GetMapping("/{code}/news")
+    public ApiResponse<StockNewsDTO> getStockNews(@PathVariable String code) {
+        return stockNewsService.news(code)
+                .map(resolution -> ApiResponse.success(StockNewsDTO.from(code, resolution)))
+                .orElse(ApiResponse.error(503, "新闻源暂不可用，请稍后重试"));
     }
 
     /**

@@ -1,6 +1,7 @@
 import axios from "axios";
 import type {
   StockSearchResult,
+  StockNews,
   WeeklyStockRecommendation,
   WatchlistItem,
   AnalysisReport,
@@ -30,6 +31,16 @@ export const getWeeklyValuePicks = async (): Promise<
   WeeklyStockRecommendation[]
 > => {
   const { data } = await api.get("/stocks/recommendations/weekly");
+  return data.data;
+};
+
+// 新闻源与缓存都不可用时后端返回 503，这里转成异常由调用方显式处理
+export const getStockNews = async (stockCode: string): Promise<StockNews> => {
+  const { data } = await api.get(
+    `/stocks/${encodeURIComponent(stockCode)}/news`,
+  );
+  if (data.code !== 200 || !data.data)
+    throw new Error(data.message || "新闻源暂不可用");
   return data.data;
 };
 

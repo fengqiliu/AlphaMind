@@ -285,3 +285,18 @@ export interface StockSearchResult {
   currentPrice?: number;
   changePercent?: number;
 }
+
+// 个股最新资讯（GET /stocks/{code}/news）
+export interface StockNews {
+  stockCode: string;
+  source: string | null; // 新闻来源（如 eastmoney）
+  stale: boolean | null; // true 表示新闻来自过期缓存
+  warning: string | null; // 过期缓存时的降级提示
+  articles: StockNewsItem[];
+}
+
+export interface StockNewsItem {
+  title: string;
+  publishedAt: string | null;
+  url: string | null;
+}
