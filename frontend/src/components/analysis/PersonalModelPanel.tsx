@@ -2,6 +2,7 @@ import type { PersonalModelAssessment } from "@/types/investment";
 import type { MarketData } from "@/types";
 import Link from "next/link";
 import { CheckCircle2, CircleHelp, ShieldAlert } from "lucide-react";
+import { FundamentalsCard } from "@/components/analysis/FundamentalsCard";
 
 const number = (value?: number | null, digits = 2) =>
   value == null ? "未提供" : value.toFixed(digits);
@@ -141,6 +142,12 @@ export function PersonalModelPanel({
           下一档复核价格上界 ¥{number(a.timing.nextBatchPriceCeiling, 3)}
           ：取下一固定档位上沿与现价减 1.5×ATR20 的更谨慎值。仅为复核间距。
         </p>
+      )}
+      {a.fundamentals && (
+        <FundamentalsCard
+          data={a.fundamentals}
+          title="复核时的财报与估值快照（自动取数）"
+        />
       )}
       {a.blockers.length > 0 && (
         <div

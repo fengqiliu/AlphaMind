@@ -95,7 +95,7 @@ class PersonalReviewReuseServiceTest {
     private AnalysisReportDTO report(String code,PersonalModelReview review,String hash) {
         var model=catalog.definition();var asset=catalog.asset(code);
         var a=new PersonalModelAssessment(model.id(),model.version(),model.versionDate(),hash,asset,"S4","测试",true,"TIER_2",32.0,
-                List.of(),new PersonalModelAssessment.Timing(null,null,null,null,null,null,null),List.of(),List.of(),List.of(),review,LocalDate.now());
+                List.of(),new PersonalModelAssessment.Timing(null,null,null,null,null,null,null),List.of(),List.of(),List.of(),review,LocalDate.now(),null);
         return AnalysisReportDTO.builder().id("source-report").stockCode(code).stockName(asset.name()).personalModel(a).createdAt(LocalDateTime.now()).build();
     }
 }

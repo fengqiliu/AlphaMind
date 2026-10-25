@@ -38,6 +38,18 @@ export function personalModelMarkdown(report: AnalysisReport): string {
     "",
     ...a.blockers.map((s) => `- ${s}`),
     "",
+    "## 财报与估值自动取数",
+    "",
+    ...(a.fundamentals
+      ? [
+          `- 来源：${a.fundamentals.source}（${a.fundamentals.status}，取数日 ${a.fundamentals.retrievedOn}）`,
+          ...(a.fundamentals.warning ? [`- 警告：${a.fundamentals.warning}`] : []),
+          `- 摘要：${a.fundamentals.evidenceSummary}`,
+          ...a.fundamentals.observations.map((s) => `- ${s}`),
+          `- ${a.fundamentals.disclaimer}`,
+        ]
+      : ["- 未取得（数据源不可用、该证券无财报，或为接入前的旧报告）"]),
+    "",
     "## 手工证据快照",
     "",
     ...(a.evidence.sourceReportId

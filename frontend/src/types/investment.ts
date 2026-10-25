@@ -84,5 +84,54 @@ export interface PersonalModelAssessment {
   blockers: string[];
   notes: string[];
   evidence: PersonalModelReview;
+  /** 旧报告没有该字段。 */
+  fundamentals?: Fundamentals | null;
   assessedOn: string;
+}
+export interface ValuationMetrics {
+  tradeDate: string;
+  closePrice?: number | null;
+  totalMarketCap?: number | null;
+  peTtm?: number | null;
+  pbMrq?: number | null;
+  pcfOcfTtm?: number | null;
+  psTtm?: number | null;
+  pegCar?: number | null;
+  pePercentile?: number | null;
+  pbPercentile?: number | null;
+  peSampleDays: number;
+  pbSampleDays: number;
+  historyFrom?: string | null;
+}
+export interface FinancialMetrics {
+  reportName?: string | null;
+  reportDate: string;
+  noticeDate?: string | null;
+  orgType?: string | null;
+  eps?: number | null;
+  deductedEps?: number | null;
+  ocfPerShare?: number | null;
+  revenue?: number | null;
+  parentNetProfit?: number | null;
+  deductedNetProfit?: number | null;
+  revenueYoy?: number | null;
+  parentNetProfitYoy?: number | null;
+  deductedNetProfitYoy?: number | null;
+  roe?: number | null;
+  grossMargin?: number | null;
+  debtRatio?: number | null;
+}
+/** 自动取得的财报/估值快照：只作 Gate 1/2 复核参考，不改变门状态。 */
+export interface Fundamentals {
+  stockCode: string;
+  source: string;
+  status: "LIVE" | "FRESH_CACHE" | "STALE_CACHE";
+  stale: boolean;
+  warning?: string | null;
+  retrievedOn: string;
+  valuation?: ValuationMetrics | null;
+  financials?: FinancialMetrics | null;
+  observations: string[];
+  evidenceSummary: string;
+  disclaimer: string;
 }

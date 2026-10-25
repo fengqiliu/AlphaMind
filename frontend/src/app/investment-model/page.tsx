@@ -8,6 +8,7 @@ import { isAxiosError } from "axios";
 import type { AnalysisReport } from "@/types";
 import type {
   Decision,
+  Fundamentals,
   PersonalModelDefinition,
   PersonalModelReview,
   PersonalReviewDraft,
@@ -15,6 +16,7 @@ import type {
 } from "@/types/investment";
 import { Button } from "@/components/common/Button";
 import { PersonalModelPanel } from "@/components/analysis/PersonalModelPanel";
+import { FundamentalsCard } from "@/components/analysis/FundamentalsCard";
 
 const inputStyle =
   "mt-2 w-full min-w-0 rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-[var(--text-primary)]";
@@ -32,6 +34,11 @@ export default function InvestmentModelPage() {
   const [draft, setDraft] = useState<PersonalReviewDraft | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
+  const [fundamentalsResult, setFundamentalsResult] = useState<{
+    code: string;
+    data: Fundamentals | null;
+    message: string | null;
+  } | null>(null);
   const draftRequest = useRef(0);
   useEffect(
     () => () => {
@@ -71,6 +78,50 @@ export default function InvestmentModelPage() {
     };
   }, [attempt]);
   const asset = model?.assets.find((item) => item.code === stockCode);
+  const assetCode = asset?.code;
+  useEffect(() => {
+    if (!assetCode) return;
+    let cancelled = false;
+    const fallback = "财报/估值数据暂不可用，请手工填写证据";
+    api
+      .get(`/investment-model/fundamentals/${encodeURIComponent(assetCode)}`)
+      .then(({ data }) => {
+        if (cancelled) return;
+        const ok = data.code === 200 && data.data?.stockCode === assetCode;
+        setFundamentalsResult({
+          code: assetCode,
+          data: ok ? data.data : null,
+          message: ok ? null : data.message || fallback,
+        });
+      })
+      .catch((caught) => {
+        if (cancelled) return;
+        setFundamentalsResult({
+          code: assetCode,
+          data: null,
+          message:
+            (isAxiosError(caught) && caught.response?.data?.message) ||
+            fallback,
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [assetCode]);
+  const current =
+    fundamentalsResult?.code === assetCode ? fundamentalsResult : null;
+  const fundamentals = current?.data ?? null;
+  const fundamentalsMessage = current?.message ?? null;
+  const fundamentalsLoading = Boolean(assetCode) && !current;
+  const appendEvidenceSummary = () => {
+    if (!fundamentals) return;
+    const existing = review.evidenceSource?.trim();
+    if (existing?.includes(fundamentals.evidenceSummary)) return;
+    set(
+      "evidenceSource",
+      (existing ? `${existing}\n` : "") + fundamentals.evidenceSummary,
+    );
+  };
   const loadDraft = async () => {
     if (!asset) return;
     const request = ++draftRequest.current;
@@ -338,8 +389,38 @@ export default function InvestmentModelPage() {
                     </Link>
                   </div>
                 )}
-                <p className="mt-2 mb-5 text-xs leading-6 text-[var(--text-muted)]">
-                  财报及估值历史尚未自动接入。以下为你的手工复核声明，报告会保存来源、日期和状态；留空时如实标记待复核。
+                <div className="mt-4">
+                  {fundamentalsLoading && (
+                    <p className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                      <Loader2 className="size-3.5 animate-spin" />
+                      正在读取财报与估值数据…
+                    </p>
+                  )}
+                  {fundamentalsMessage && (
+                    <p
+                      role="status"
+                      className="rounded-xl bg-[var(--neutral-glow)] p-3 text-xs leading-6 text-[var(--text-secondary)]"
+                    >
+                      {fundamentalsMessage}
+                    </p>
+                  )}
+                  {fundamentals && (
+                    <>
+                      <FundamentalsCard data={fundamentals} />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-3"
+                        onClick={appendEvidenceSummary}
+                      >
+                        将取数摘要填入证据来源
+                      </Button>
+                    </>
+                  )}
+                </div>
+                <p className="mt-4 mb-5 text-xs leading-6 text-[var(--text-muted)]">
+                  自动取数只作参考，不会改变任何决策门。以下结论仍是你的手工复核声明，报告会保存来源、日期和状态；留空时如实标记待复核。
                 </p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className={labelStyle}>

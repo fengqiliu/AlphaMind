@@ -123,7 +123,7 @@ public class PersonalModelEngine {
         notes.add("风险数值为人工输入的交易后合并敞口；不使用文档旧持仓推测当前账户，不生成固定止损价或收益目标。");
         if (asset.provisional()) notes.add("博通集成三档为暂定，额外确认扣非、现金流、库存、产品收入与估值回落后才可升级。");
         return new PersonalModelAssessment(model.id(), model.version(), model.versionDate(), model.sourceSha256(), asset,
-                level, action, candidate, zone, price, gates, timing, List.copyOf(missing), List.copyOf(blocks), notes, review, today);
+                level, action, candidate, zone, price, gates, timing, List.copyOf(missing), List.copyOf(blocks), notes, review, today, null);
     }
     private static PersonalModelAssessment.Gate gate(String id, String label, String status, String detail) { return new PersonalModelAssessment.Gate(id,label,status,detail); }
     private static String status(boolean pass, boolean fail) { return fail ? "FAIL" : pass ? "PASS" : "PENDING"; }
