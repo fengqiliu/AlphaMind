@@ -74,9 +74,7 @@ public final class BacktestStats {
         if (ics.isEmpty()) return new IcStats(0, null, null, null);
         double mean = ics.stream().mapToDouble(Double::doubleValue).average().orElseThrow();
         double positive = (double) ics.stream().filter(v -> v > 0).count() / ics.size();
-        List<Double> spaced = new ArrayList<>();
-        for (int i = 0; i < ics.size(); i += horizon) spaced.add(ics.get(i));
-        return new IcStats(ics.size(), mean, positive, tStat(spaced));
+        return new IcStats(ics.size(), mean, positive, tStat(ics, horizon));
     }
 
     /** 按去重排序后的信号日取第 {@code share} 分位作为切分点；早于它的为样本内。 */
@@ -88,19 +86,23 @@ public final class BacktestStats {
 
     public static Verdict verdict(BucketStats high, BucketStats low, IcStats ic) {
         boolean spread = high.meanExcess() != null && low.meanExcess() != null && high.meanExcess() - low.meanExcess() > 0;
-        boolean ranking = ic.meanIc() != null && ic.meanIc() > 0 && ic.tNonOverlap() != null && ic.tNonOverlap() > 2;
+        boolean ranking = ic.meanIc() != null && ic.meanIc() > 0 && ic.tOverlapAdjusted() != null && ic.tOverlapAdjusted() > 2;
         if (spread && ranking) return Verdict.DISCRIMINATIVE;
         if (spread || ranking) return Verdict.WEAK;
         return Verdict.NONE;
     }
 
-    private static Double tStat(List<Double> values) {
-        int k = values.size();
-        if (k < 2) return null;
+    /**
+     * 持有期重叠修正的 t 值：均值取全部 IC，标准误按有效独立样本数 n/h 放大
+     * （相邻 h 日的持有期重叠，IC 并不独立）。与抽样起点无关，与展示的 IC 均值同源。
+     */
+    private static Double tStat(List<Double> values, int horizon) {
+        double effective = (double) values.size() / horizon;
+        if (effective < 2) return null;
         double mean = values.stream().mapToDouble(Double::doubleValue).average().orElseThrow();
-        double variance = values.stream().mapToDouble(v -> (v - mean) * (v - mean)).sum() / (k - 1);
+        double variance = values.stream().mapToDouble(v -> (v - mean) * (v - mean)).sum() / (values.size() - 1);
         if (variance == 0) return null;
-        return mean / (Math.sqrt(variance) / Math.sqrt(k));
+        return mean / (Math.sqrt(variance) / Math.sqrt(effective));
     }
 
     private static double[] ranks(double[] values) {

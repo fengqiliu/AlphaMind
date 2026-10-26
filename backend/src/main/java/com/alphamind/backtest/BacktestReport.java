@@ -16,7 +16,7 @@ public final class BacktestReport {
         md.append("## 结论\n\n");
         md.append("**判定：").append(s.verdict().label()).append("**\n\n");
         md.append("判定规则（事先写定）：样本外、持有 ").append(TechnicalBacktestMain.VERDICT_HORIZON)
-                .append(" 日时，同时满足 ①“≥70 档平均超额 − <40 档平均超额 > 0” ②“IC 均值 > 0 且不重叠 t 值 > 2” 为有区分力；只满足一项为弱/不确定；都不满足为未见区分力。参与股票少于 5 只时不做判定。\n\n");
+                .append(" 日时，同时满足 ①“≥70 档平均超额 − <40 档平均超额 > 0” ②“IC 均值 > 0 且重叠修正 t 值 > 2” 为有区分力；只满足一项为弱/不确定；都不满足为未见区分力。参与股票少于 5 只时不做判定。\n\n");
         List<BucketStats> verdictBuckets = s.outSample().get(TechnicalBacktestMain.VERDICT_HORIZON);
         IcStats verdictIc = s.icOut().get(TechnicalBacktestMain.VERDICT_HORIZON);
         if (verdictBuckets != null && verdictIc != null) {
@@ -24,8 +24,8 @@ public final class BacktestReport {
             md.append("- 样本外 h=10：").append(high.label()).append(" 档平均超额 ").append(pct(high.meanExcess()))
                     .append("（").append(high.count()).append(" 个样本），").append(low.label()).append(" 档 ")
                     .append(pct(low.meanExcess())).append("（").append(low.count()).append(" 个样本）\n");
-            md.append("- 样本外 h=10：IC 均值 ").append(num(verdictIc.meanIc())).append("，不重叠 t 值 ")
-                    .append(num(verdictIc.tNonOverlap())).append("\n\n");
+            md.append("- 样本外 h=10：IC 均值 ").append(num(verdictIc.meanIc())).append("，重叠修正 t 值 ")
+                    .append(num(verdictIc.tOverlapAdjusted())).append("\n\n");
         }
 
         md.append("## 方法\n\n");
@@ -36,7 +36,7 @@ public final class BacktestReport {
                 .append(s.limitUpSkipped()).append(" 个信号日。\n");
         md.append("- 成本：买入佣金 0.025% + 滑点 0.05%；卖出佣金 0.025% + 滑点 0.05% + 印花税 0.05%，往返约 0.2%。下表收益均为扣费后净收益。\n");
         md.append("- 超额收益：净收益减去同一信号日、同一持有期全部样本的等权平均净收益，剔除大盘整体涨跌。\n");
-        md.append("- IC：每个交易日至少 5 只股票时计算分数与未来收益的 Spearman 秩相关；t 值只用每隔 h 日取一次的 IC，避免持有期重叠夸大显著性。\n");
+        md.append("- IC：每个交易日至少 5 只股票时计算分数与未来收益的 Spearman 秩相关；t 值用全部交易日 IC 的均值，标准误按有效独立样本数（交易日数 / h）放大，避免持有期重叠夸大显著性，且不依赖抽样起点。\n");
         md.append("- 样本切分：按信号日期前 70% 为样本内、后 30% 为样本外，切分日 ").append(s.split() == null ? "—" : s.split())
                 .append("（含当日起为样本外）。结论以样本外为准。\n\n");
 
@@ -61,7 +61,7 @@ public final class BacktestReport {
             md.append("样本外 10 分细分：\n\n").append(table(s.fineOutSample().get(h)));
         }
 
-        md.append("## 排序能力（IC）\n\n| 持有期 | 区间 | 交易日数 | IC 均值 | IC>0 比例 | 不重叠 t 值 |\n| --- | --- | --- | --- | --- | --- |\n");
+        md.append("## 排序能力（IC）\n\n| 持有期 | 区间 | 交易日数 | IC 均值 | IC>0 比例 | 重叠修正 t 值 |\n| --- | --- | --- | --- | --- | --- |\n");
         for (Integer h : s.icOut().keySet()) {
             md.append(icRow(h, "样本内", s.icIn().get(h))).append(icRow(h, "样本外", s.icOut().get(h)));
         }
@@ -87,7 +87,7 @@ public final class BacktestReport {
 
     private static String icRow(int h, String label, IcStats ic) {
         return "| " + h + " 日 | " + label + " | " + ic.dates() + " | " + num(ic.meanIc()) + " | "
-                + pct(ic.positiveShare()) + " | " + num(ic.tNonOverlap()) + " |\n";
+                + pct(ic.positiveShare()) + " | " + num(ic.tOverlapAdjusted()) + " |\n";
     }
 
     private static String pct(Double value) {

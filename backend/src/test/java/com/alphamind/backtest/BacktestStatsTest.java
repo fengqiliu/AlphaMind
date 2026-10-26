@@ -67,12 +67,12 @@ class BacktestStatsTest {
         var ic = BacktestStats.ic(rows, 10);
         assertEquals(1, ic.dates());
         assertEquals(1.0, ic.meanIc(), 1e-12);
-        assertNull(ic.tNonOverlap(), "只有一个 IC 时无法计算 t 值");
+        assertNull(ic.tOverlapAdjusted(), "只有一个 IC 时无法计算 t 值");
     }
 
     @Test
-    void tStatUsesEveryHthDate() {
-        // h=2：IC 序列 +1, -1, +1, -1, +1, -1 → 不重叠取第 0/2/4 个 = 全为 +1；再加一天 0.5 打破零方差
+    void tStatUsesFullSeriesMeanWithOverlapAdjustedError() {
+        // h=2，IC 序列 +1, -1, +1, -1, +1, -1, 0.9：t = mean / (sd / sqrt(n / h))，与起点无关
         List<BacktestSample> rows = new ArrayList<>();
         double[] sign = {1, -1, 1, -1, 1, -1};
         for (int d = 0; d < sign.length; d++)
@@ -81,9 +81,17 @@ class BacktestStatsTest {
         for (int i = 0; i < 5; i++) rows.add(s("S" + i, 6, 40 + i * 10, 2, partial[i] * 0.01));
         var ic = BacktestStats.ic(rows, 2);
         assertEquals(7, ic.dates());
-        // 不重叠序列：day0=1, day2=1, day4=1, day6=0.9 → mean 0.975, sd 0.05, t = 0.975/(0.05/2) = 39
-        assertEquals(39.0, ic.tNonOverlap(), 1e-9);
+        assertEquals(0.9 / 7, ic.meanIc(), 1e-12, "t 值与展示的均值来自同一序列");
+        assertEquals(0.2277204297161659, ic.tOverlapAdjusted(), 1e-9);
         assertEquals(4.0 / 7, ic.positiveShare(), 1e-12);
+    }
+
+    @Test
+    void tStatNeedsAtLeastTwoEffectiveSamples() {
+        List<BacktestSample> rows = new ArrayList<>();
+        for (int d = 0; d < 3; d++)
+            for (int i = 0; i < 5; i++) rows.add(s("S" + i, d, 40 + i * 10, 2, (d == 1 ? -1 : 1) * i * 0.01));
+        assertNull(BacktestStats.ic(rows, 2).tOverlapAdjusted(), "3 个交易日 / h=2 不足 2 个有效独立样本");
     }
 
     @Test
