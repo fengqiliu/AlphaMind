@@ -83,7 +83,13 @@ export function TechnicalIndicatorsPanel({
           <IndicatorCard
             title="MACD柱"
             value={macd.histogram}
-            signal={macd.histogram > 0 ? "oversold" : macd.histogram < 0 ? "overbought" : "neutral"}
+            signal={
+              macd.histogram > 0
+                ? "oversold"
+                : macd.histogram < 0
+                  ? "overbought"
+                  : "neutral"
+            }
           />
         </div>
       </div>
@@ -173,19 +179,33 @@ export function TechnicalIndicatorsPanel({
       </div>
 
       <details className="rounded-xl border border-[var(--border)] p-3" open>
-        <summary className="cursor-pointer text-sm font-medium">技术评分依据</summary>
+        <summary className="cursor-pointer text-sm font-medium">
+          技术评分依据
+        </summary>
         <p className="mt-2 text-xs leading-relaxed text-[var(--text-secondary)]">
-          {data.scoreExplanation || "旧报告未记录技术评分口径，不按新规则重算。"}
+          {data.scoreExplanation ||
+            "旧报告未记录技术评分口径，不按新规则重算。"}
         </p>
         {data.scoreContributions && (
           <ul className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--text-muted)]">
             {Object.entries(data.scoreContributions).map(([name, points]) => (
-              <li className="rounded bg-[var(--bg-tertiary)] px-2 py-1" key={name}>
-                {name} {points > 0 ? "+" : ""}{points}
+              <li
+                className="rounded bg-[var(--bg-tertiary)] px-2 py-1"
+                key={name}
+              >
+                {name} {points > 0 ? "+" : ""}
+                {points}
               </li>
             ))}
           </ul>
         )}
+        {data.scoreExplanation?.includes("技术规则 V1") &&
+          !data.scoreExplanation.includes("未见区分力") && (
+            <p className="mt-2 rounded-lg bg-[var(--neutral-glow)] p-2 text-xs leading-relaxed text-[var(--neutral)]">
+              补充：技术规则 V1 已于 2026-10-26
+              回测（72只观察股约5年，样本外持有10日），未见区分力；本报告生成时尚无此结论，技术分不应单独作为买卖依据。
+            </p>
+          )}
       </details>
 
       {/* 综合评分 */}

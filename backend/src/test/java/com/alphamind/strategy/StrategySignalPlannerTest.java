@@ -4,7 +4,11 @@ import com.alphamind.model.dto.TradeSignalDTO;
 import com.alphamind.model.enums.SignalType;
 import org.junit.jupiter.api.Test;
 
+import com.alphamind.scoring.TechnicalScoring;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StrategySignalPlannerTest {
 
@@ -49,5 +53,18 @@ class StrategySignalPlannerTest {
         TradeSignalDTO signal = planner.plan(100.0, 20, 0.1, 0.7, profile);
 
         assertEquals(SignalType.SELL, signal.getType());
+    }
+
+    @Test
+    void everySignalRationaleCarriesBacktestFinding() {
+        StrategyProfile profile = new BalancedStrategyProfile();
+        for (TradeSignalDTO signal : new TradeSignalDTO[]{
+                planner.plan(100, 95, 1.0, 0.9, profile),   // BUY
+                planner.plan(100, 95, 1.0, 0.1, profile),   // BUY 降为 HOLD
+                planner.plan(100, 60, 0.5, 0.9, profile),   // HOLD
+                planner.plan(100, 20, 0.1, 0.9, profile)}) { // SELL
+            assertTrue(signal.getRationale().contains(TechnicalScoring.SIGNAL_CAVEAT), signal.getType() + ": " + signal.getRationale());
+            assertFalse(signal.getRationale().contains("示意交易计划未经回测校准"));
+        }
     }
 }

@@ -63,6 +63,14 @@ class TechnicalScoringTest {
     }
 
     @Test
+    void explanationDisclosesBacktestFinding() {
+        String explanation = TechnicalScoring.score(flat(40), 100).getScoreExplanation();
+        assertTrue(explanation.contains(TechnicalScoring.BACKTEST_FINDING));
+        assertTrue(explanation.contains("未见区分力"));
+        assertFalse(explanation.contains("未经回测校准"), "技术分已回测，旧说法不再成立");
+    }
+
+    @Test
     void rejectsShortSeries() {
         var error = assertThrows(IllegalArgumentException.class, () -> TechnicalScoring.score(flat(33), 100));
         assertTrue(error.getMessage().contains("至少需要34根"));

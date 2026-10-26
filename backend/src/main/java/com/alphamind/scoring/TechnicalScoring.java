@@ -13,6 +13,15 @@ import java.util.Map;
  */
 public final class TechnicalScoring {
 
+    /** 技术规则 V1 的回测结论，见 docs/回测/技术分回测-2026-10-26.md。 */
+    public static final String BACKTEST_FINDING =
+            "回测（2026-10-26，72只观察股约5年，样本外持有10日）未见区分力：≥70分档超额收益不高于<40分档，IC未达显著；"
+                    + "技术分只描述当前指标状态，不应单独作为买卖依据。";
+
+    /** 附在每条交易信号理由后的说明：技术分回测未见区分力，舆情分无法回测。 */
+    public static final String SIGNAL_CAVEAT =
+            "技术分经历史回测未见区分力，舆情分缺少历史新闻无法回测，本信号整体未经验证，仅作规则参考。";
+
     private TechnicalScoring() {}
 
     /**
@@ -78,7 +87,7 @@ public final class TechnicalScoring {
         contributions.put("限幅调整", score - rawScore);
         String scoreExplanation = "技术规则 V1：基础50分加MACD/RSI12/KDJ/布林位置贡献，限于10–95分；>=70偏多、<40偏空，其余中性。"
                 + "超卖与跌破下轨是反转假设加分，不是已发生反弹；仅当前指标关系，未证明金叉/死叉、持续变化或同业排名。使用"
-                + n + "根有效日K线；未经回测校准。";
+                + n + "根有效日K线。" + BACKTEST_FINDING;
 
         return TechnicalIndicatorsDTO.builder()
                 .macd(TechnicalIndicatorsDTO.MacdDTO.builder()

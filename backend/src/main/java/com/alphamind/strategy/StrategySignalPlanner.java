@@ -27,7 +27,7 @@ public class StrategySignalPlanner {
         if (compositeScore >= 70) {
             signalType = SignalType.BUY;
             targetRatio = strategy.getBuyTargetBaseRatio() + (compositeScore - 70) / 200.0;
-            rationale = "技术与舆情按0–100等权合成，达到70分规则阈值；示意交易计划未经回测校准。";
+            rationale = "技术与舆情按0–100等权合成，达到70分规则阈值。";
         } else if (compositeScore >= 50) {
             signalType = SignalType.HOLD;
             targetRatio = 0.03;
@@ -45,7 +45,7 @@ public class StrategySignalPlanner {
             targetRatio = 0.02;
         }
 
-        rationale += String.format(java.util.Locale.ROOT, " 等权综合%.1f/100，技术%d/100、舆情%.0f/100；一致度%.0f/100，%s门槛%.0f/100。目标价与止损为策略示意参数，不是价格预测。",
+        rationale += String.format(java.util.Locale.ROOT, " 等权综合%.1f/100，技术%d/100、舆情%.0f/100；一致度%.0f/100，%s门槛%.0f/100。目标价与止损为策略示意参数，不是价格预测。" + com.alphamind.scoring.TechnicalScoring.SIGNAL_CAVEAT,
                 compositeScore, technicalScore, sentimentScore * 100, confidenceValue * 100,
                 strategy.getLabel(), strategy.getConfidenceThreshold() * 100);
         double targetPrice = currentPrice * (1 + targetRatio);
