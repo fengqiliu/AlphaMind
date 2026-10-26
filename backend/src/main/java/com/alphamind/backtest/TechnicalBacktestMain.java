@@ -6,6 +6,7 @@ import com.alphamind.service.StockCatalog;
 import com.alphamind.service.StockCatalog.StockMetadata;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.web.client.RestTemplateBuilder;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -13,10 +14,11 @@ import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.*;
+import java.util.function.Function;
 
 /**
  * 技术分离线回测入口（不启动 Spring）。在 backend 目录运行：
- * {@code java -cp target/classes:<deps> com.alphamind.backtest.TechnicalBacktestMain [--refresh] [--out=路径]}。
+ * {@code java -cp target/classes:<deps> com.alphamind.backtest.TechnicalBacktestMain [--refresh] [--out=路径] [--raw-dir=目录]}。
  * K 线缓存在 {@code backtest-data/}，再次运行默认离线读取缓存。
  */
 public final class TechnicalBacktestMain {
@@ -73,6 +75,22 @@ public final class TechnicalBacktestMain {
         return new RunSummary(runDate, coverage, excluded, in, out, fine, icIn, icOut, split, limitUpSkipped, verdict);
     }
 
+    /**
+     * 读取事先保存的东方财富日 K 原始响应 {@code <dir>/<code>.json}，用线上同一解析器转换；
+     * 用于无法直连数据源的环境（如需认证代理），文件缺失或无法解析时返回 empty。
+     */
+    static Function<String, Optional<List<DailyKline>>> rawResponseFetcher(Path dir, ObjectMapper mapper) {
+        return code -> {
+            Path file = dir.resolve(code + ".json");
+            if (!Files.exists(file)) return Optional.empty();
+            try {
+                return EastmoneyKlineMarketDataProvider.parseKlines(Files.readString(file), BARS_TO_FETCH, mapper);
+            } catch (IOException exception) {
+                return Optional.empty();
+            }
+        };
+    }
+
     public static void main(String[] args) throws IOException {
         boolean refresh = Arrays.asList(args).contains("--refresh");
         LocalDate today = LocalDate.now(ZoneId.of("Asia/Shanghai"));
@@ -81,8 +99,12 @@ public final class TechnicalBacktestMain {
                 .orElse(Path.of("..", "docs", "回测", "技术分回测-" + today + ".md"));
 
         ObjectMapper mapper = new ObjectMapper();
-        var provider = new EastmoneyKlineMarketDataProvider(new RestTemplateBuilder(), mapper, 3000, 15000);
-        KlineSource source = new CachedKlineSource(Path.of("backtest-data"), code -> {
+        Optional<Path> rawDir = Arrays.stream(args).filter(a -> a.startsWith("--raw-dir=")).findFirst()
+                .map(a -> Path.of(a.substring("--raw-dir=".length())));
+        var provider = new EastmoneyKlineMarketDataProvider(
+                // 命令行工具固定用 JDK HTTP 客户端，避免类路径上的 Netty 被自动选中
+                new RestTemplateBuilder().requestFactory(SimpleClientHttpRequestFactory::new), mapper, 3000, 15000);
+        Function<String, Optional<List<DailyKline>>> live = code -> {
             System.out.println("取数 " + code);
             try {
                 Thread.sleep(REQUEST_INTERVAL_MS);
@@ -90,7 +112,9 @@ public final class TechnicalBacktestMain {
                 Thread.currentThread().interrupt();
             }
             return provider.fetchDailyKlines(code, BARS_TO_FETCH);
-        }, refresh, mapper);
+        };
+        KlineSource source = new CachedKlineSource(Path.of("backtest-data"),
+                rawDir.map(dir -> rawResponseFetcher(dir, mapper)).orElse(live), refresh, mapper);
 
         RunSummary summary = run(new StockCatalog().all(), source, today);
         Files.createDirectories(out.toAbsolutePath().getParent());

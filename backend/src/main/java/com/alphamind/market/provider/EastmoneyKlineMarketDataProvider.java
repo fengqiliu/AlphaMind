@@ -63,8 +63,8 @@ public class EastmoneyKlineMarketDataProvider implements MarketDataProvider {
         }
     }
 
-    /** Package-visible parser for deterministic tests against saved API payloads. */
-    static Optional<List<DailyKline>> parseKlines(String response, int limit, ObjectMapper objectMapper) {
+    /** Parser for saved API payloads: deterministic tests and the offline backtest's {@code --raw-dir} mode. */
+    public static Optional<List<DailyKline>> parseKlines(String response, int limit, ObjectMapper objectMapper) {
         try {
             if (response == null || response.isBlank()) {
                 return Optional.empty();

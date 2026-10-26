@@ -24,7 +24,16 @@ mvn -Dtest=StrategyModeResolverTest test
 mvn -Dtest=StrategyModeResolverTest#shouldUseExplicitModeWhenProvided test
 ```
 
-Backend tests are plain JUnit 5 with no Spring context, no DB, and no network — `mvn test` runs fully offline. Committed suites cover `strategy/`, `market/`, `service/`, and `agent/`.
+Backend tests are plain JUnit 5 with no Spring context, no DB, and no network — `mvn test` runs fully offline. Committed suites cover `strategy/`, `market/`, `service/`, `agent/`, `scoring/`, `fundamental/`, `investment/`, and `backtest/`.
+
+Technical-score backtest (manual, never part of `mvn test`; run from `backend/`):
+
+```bash
+mvn -q compile dependency:build-classpath -Dmdep.outputFile=cp.txt
+java -cp target/classes:$(cat cp.txt) com.alphamind.backtest.TechnicalBacktestMain   # --refresh, --out=PATH, --raw-dir=DIR
+```
+
+It caches K-lines in `backend/backtest-data/` (gitignored) and writes `docs/回测/技术分回测-<date>.md`. `TechnicalScoring.score()` is the single scoring implementation shared by `TechnicalAgent` and the backtest — change scoring there, never in a copy.
 
 ### Frontend (Next.js 16.2, React 19, Tailwind v4)
 
