@@ -180,3 +180,7 @@ credentials/
 
 # ============ Documentation ============
 *.md.html
+
+# ============ Backtest ============
+# 回测原始 K 线缓存（可重新取数）
+backend/backtest-data/
