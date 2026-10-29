@@ -59,4 +59,15 @@ class CachedKlineSourceTest {
         assertTrue(source.load("517400").isEmpty());
         assertFalse(Files.exists(dir.resolve("517400.json")));
     }
+
+    @Test
+    void refreshFailureFallsBackToCacheWithNote() {
+        new CachedKlineSource(dir, fetcher(Optional.of(bars)), false, mapper).load("600036");
+        var refreshed = new CachedKlineSource(dir, fetcher(Optional.empty()), true, mapper);
+        assertEquals(bars, refreshed.load("600036").orElseThrow());
+        assertEquals(1, refreshed.notes().size());
+        assertTrue(refreshed.notes().get(0).contains("600036") && refreshed.notes().get(0).contains("沿用"));
+        assertTrue(refreshed.load("000001").isEmpty(), "无缓存时仍返回 empty");
+        assertEquals(1, refreshed.notes().size());
+    }
 }

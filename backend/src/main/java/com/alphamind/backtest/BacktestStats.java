@@ -77,6 +77,25 @@ public final class BacktestStats {
         return new IcStats(ics.size(), mean, positive, tStat(ics, horizon));
     }
 
+    /** 去掉同一信号日、同一持有期不足 {@value #MIN_STOCKS_PER_DATE} 只股票的样本：横截面太窄，超额收益基准不可靠。 */
+    public static List<BacktestSample> dropThinDates(List<BacktestSample> samples) {
+        Map<String, Long> counts = samples.stream().collect(Collectors.groupingBy(
+                s -> s.signalDate() + "|" + s.horizon(), Collectors.counting()));
+        return samples.stream()
+                .filter(s -> counts.get(s.signalDate() + "|" + s.horizon()) >= MIN_STOCKS_PER_DATE)
+                .toList();
+    }
+
+    /**
+     * 持有 h 日时样本内的截止日（不含）：切分日之前最后 h 个信号日的持有期会跨入样本外，予以留空。
+     * 间隔超过样本内长度时返回最早信号日，即样本内为空。
+     */
+    public static LocalDate embargoStart(List<BacktestSample> samples, LocalDate split, int horizon) {
+        List<LocalDate> dates = samples.stream().map(BacktestSample::signalDate).distinct().sorted().toList();
+        int splitIndex = dates.indexOf(split);
+        return dates.get(Math.max(0, splitIndex - horizon));
+    }
+
     /** 按去重排序后的信号日取第 {@code share} 分位作为切分点；早于它的为样本内。 */
     public static LocalDate splitDate(List<BacktestSample> samples, double share) {
         List<LocalDate> dates = samples.stream().map(BacktestSample::signalDate).distinct().sorted().toList();

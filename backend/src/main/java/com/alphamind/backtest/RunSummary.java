@@ -13,6 +13,13 @@ public record RunSummary(LocalDate runDate,
                          Map<Integer, List<BucketStats>> fineOutSample,
                          Map<Integer, IcStats> icIn,
                          Map<Integer, IcStats> icOut,
+                         List<String> dataNotes,
                          LocalDate split,
                          int limitUpSkipped,
-                         Verdict verdict) {}
+                         Verdict verdict) {
+
+    /** 参与股票中最晚的 K 线日期；无参与股票时为 null。 */
+    public LocalDate dataThrough() {
+        return coverage.stream().map(SymbolCoverage::to).max(LocalDate::compareTo).orElse(null);
+    }
+}

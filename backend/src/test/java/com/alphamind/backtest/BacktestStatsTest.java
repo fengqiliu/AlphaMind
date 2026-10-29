@@ -95,6 +95,26 @@ class BacktestStatsTest {
     }
 
     @Test
+    void dropThinDatesRemovesDatesWithFewerThanFiveStocks() {
+        List<BacktestSample> rows = new ArrayList<>();
+        for (int i = 0; i < 5; i++) rows.add(s("S" + i, 0, 50, 10, 0));
+        for (int i = 0; i < 4; i++) rows.add(s("S" + i, 1, 50, 10, 0));
+        for (int i = 0; i < 4; i++) rows.add(s("S" + i, 0, 50, 5, 0)); // 同日不同持有期分开计数
+        var kept = BacktestStats.dropThinDates(rows);
+        assertEquals(5, kept.size());
+        assertTrue(kept.stream().allMatch(r -> r.signalDate().equals(D0) && r.horizon() == 10));
+    }
+
+    @Test
+    void embargoStartIsHDatesBeforeSplit() {
+        List<BacktestSample> rows = new ArrayList<>();
+        for (int d = 0; d < 10; d++) rows.add(s("A", d, 50, 5, 0));
+        LocalDate split = D0.plusDays(7);
+        assertEquals(D0.plusDays(5), BacktestStats.embargoStart(rows, split, 2), "样本内只到切分前第 h 个信号日之前");
+        assertEquals(D0, BacktestStats.embargoStart(rows, split, 20), "间隔超过样本内长度时样本内为空");
+    }
+
+    @Test
     void splitDateIsSeventyPercentOfDistinctDates() {
         List<BacktestSample> rows = new ArrayList<>();
         for (int d = 0; d < 10; d++) { rows.add(s("A", d, 50, 5, 0)); rows.add(s("B", d, 50, 5, 0)); }

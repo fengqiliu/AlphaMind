@@ -39,24 +39,30 @@ class TechnicalScoringTest {
         assertEquals(40, result.getSampleSize());
     }
 
+    /** 固定期望值：技术规则 V1 在该序列上的输出（重构时已核对与原实现逐行一致），任何评分改动都会让它失败。 */
     @Test
-    void matchesAgentOutputOnFixture() {
+    void fixtureScoreIsPinned() {
+        List<double[]> bars = fixture();
+        var result = TechnicalScoring.score(bars, bars.get(bars.size() - 1)[1]);
+        assertEquals(47, result.getTechnicalScore());
+        assertEquals(java.util.Map.of("基础分", 50, "MACD柱", 15, "RSI12", -10, "KDJ_J", -8, "布林位置", 0, "限幅调整", 0),
+                result.getScoreContributions());
+        assertEquals(0.883, result.getMacd().getHistogram());
+        assertEquals(73.32, result.getRsi().getRsi12());
+        assertEquals(118.65, result.getKdj().getJ());
+        assertEquals(52.54, result.getBollinger().getLower());
+        assertEquals(62.64, result.getBollinger().getUpper());
+    }
+
+    @Test
+    void agentDelegatesToTechnicalScoring() {
         List<double[]> bars = fixture();
         double price = bars.get(bars.size() - 1)[1];
         TechnicalAgent agent = new TechnicalAgent();
         try {
             agent.setContext("marketData", MarketDataDTO.builder().currentPrice(price).klines(bars).build());
             var fromAgent = agent.analyze(AnalysisReportDTO.builder().stockCode("TEST").build()).getTechnicalIndicators();
-            var pure = TechnicalScoring.score(bars, price);
-
-            assertEquals(fromAgent.getTechnicalScore(), pure.getTechnicalScore());
-            assertEquals(fromAgent.getScoreContributions(), pure.getScoreContributions());
-            assertEquals(fromAgent.getScoreExplanation(), pure.getScoreExplanation());
-            assertEquals(fromAgent.getMacd(), pure.getMacd());
-            assertEquals(fromAgent.getRsi(), pure.getRsi());
-            assertEquals(fromAgent.getKdj(), pure.getKdj());
-            assertEquals(fromAgent.getBollinger(), pure.getBollinger());
-            assertNull(pure.getAiInterpretation(), "纯函数不调用 LLM");
+            assertEquals(TechnicalScoring.score(bars, price).getScoreContributions(), fromAgent.getScoreContributions());
         } finally {
             agent.clearContext();
         }

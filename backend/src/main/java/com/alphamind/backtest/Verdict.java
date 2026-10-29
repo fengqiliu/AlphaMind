@@ -4,7 +4,8 @@ package com.alphamind.backtest;
 public enum Verdict {
     DISCRIMINATIVE("有区分力"),
     WEAK("弱/不确定"),
-    NONE("未见区分力");
+    NONE("未见区分力"),
+    INSUFFICIENT_DATA("数据不足，不做判定");
 
     private final String label;
 

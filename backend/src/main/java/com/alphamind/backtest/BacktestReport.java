@@ -10,13 +10,14 @@ public final class BacktestReport {
 
     public static String render(RunSummary s) {
         StringBuilder md = new StringBuilder();
-        md.append("# 技术分回测报告（").append(s.runDate()).append("）\n\n");
+        md.append("# 技术分回测报告\n\n数据截至 ").append(s.dataThrough() == null ? "—" : s.dataThrough())
+                .append(" · 生成于 ").append(s.runDate()).append("\n\n");
         md.append("> 历史统计，不构成投资建议。本报告只检验技术规则 V1 的分数对未来收益的区分力，不涉及舆情分、综合分或规则一致度。\n\n");
 
         md.append("## 结论\n\n");
         md.append("**判定：").append(s.verdict().label()).append("**\n\n");
         md.append("判定规则（事先写定）：样本外、持有 ").append(TechnicalBacktestMain.VERDICT_HORIZON)
-                .append(" 日时，同时满足 ①“≥70 档平均超额 − <40 档平均超额 > 0” ②“IC 均值 > 0 且重叠修正 t 值 > 2” 为有区分力；只满足一项为弱/不确定；都不满足为未见区分力。参与股票少于 5 只时不做判定。\n\n");
+                .append(" 日时，同时满足 ①“≥70 档平均超额 − <40 档平均超额 > 0” ②“IC 均值 > 0 且重叠修正 t 值 > 2” 为有区分力；只满足一项为弱/不确定；都不满足为未见区分力。参与股票少于 5 只时判定为数据不足，不做判定。\n\n");
         List<BucketStats> verdictBuckets = s.outSample().get(TechnicalBacktestMain.VERDICT_HORIZON);
         IcStats verdictIc = s.icOut().get(TechnicalBacktestMain.VERDICT_HORIZON);
         if (verdictBuckets != null && verdictIc != null) {
@@ -38,11 +39,16 @@ public final class BacktestReport {
         md.append("- 超额收益：净收益减去同一信号日、同一持有期全部样本的等权平均净收益，剔除大盘整体涨跌。\n");
         md.append("- IC：每个交易日至少 5 只股票时计算分数与未来收益的 Spearman 秩相关；t 值用全部交易日 IC 的均值，标准误按有效独立样本数（交易日数 / h）放大，避免持有期重叠夸大显著性，且不依赖抽样起点。\n");
         md.append("- 样本切分：按信号日期前 70% 为样本内、后 30% 为样本外，切分日 ").append(s.split() == null ? "—" : s.split())
-                .append("（含当日起为样本外）。结论以样本外为准。\n\n");
+                .append("（含当日起为样本外）；持有 h 日时样本内再留出切分前最后 h 个信号日，避免持有期跨入样本外。同一信号日不足 5 只股票的样本不计入统计。结论以样本外为准。\n\n");
 
         md.append("## 数据\n\n");
         md.append("东方财富前复权日 K（技术分四个指标对价格的线性缩放/平移不变，前复权对信号影响很小；收益按复权价计算，包含分红）。参与 ")
                 .append(s.coverage().size()).append(" 只，排除 ").append(s.excluded().size()).append(" 只。\n\n");
+        if (!s.dataNotes().isEmpty()) {
+            md.append("数据说明：\n\n");
+            s.dataNotes().forEach(n -> md.append("- ").append(n).append('\n'));
+            md.append('\n');
+        }
         if (!s.excluded().isEmpty()) {
             md.append("排除：\n\n");
             s.excluded().forEach(e -> md.append("- ").append(e).append('\n'));
@@ -69,7 +75,7 @@ public final class BacktestReport {
 
         md.append("## 局限\n\n");
         md.append("- 幸存者偏差：股票池是 `StockCatalog` 当前名单，历史上退市或被剔除的股票不在其中，结果可能偏乐观。\n");
-        md.append("- 样本有限：约 70 只股票、约 5 年单一市场阶段，不同市场环境下结论可能不同。\n");
+        md.append("- 样本有限：约 70 个观察标的（含少量 ETF）、约 5 年单一市场阶段，不同市场环境下结论可能不同。\n");
         md.append("- 成本为假设值；未考虑冲击成本、一字跌停无法卖出和资金容量。\n");
         md.append("- 技术分只是线上综合分的一半，本结论不能推广到综合信号、BUY/HOLD/SELL 或规则一致度。\n");
         return md.toString();
