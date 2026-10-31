@@ -2,18 +2,25 @@ package com.alphamind.news.provider;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestOperations;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** 东方财富个股新闻列表适配器，供舆情分析使用真实新闻标题。 */
 @Component
@@ -62,6 +69,81 @@ public class EastmoneyNewsProvider {
             return parseNews(response, limit, objectMapper);
         } catch (Exception exception) {
             return Optional.empty();
+        }
+    }
+
+    /**
+     * 抓取单篇新闻正文摘录。只允许东方财富域名下的链接（链接必须来自上面的新闻列表），
+     * 任何失败返回 empty，调用方退回纯标题。
+     */
+    public Optional<String> fetchArticleBody(String url, int maxChars) {
+        if (url == null || maxChars <= 0 || !isEastmoneyArticleUrl(url)) {
+            return Optional.empty();
+        }
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.USER_AGENT,
+                    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36");
+            String html = restOperations.exchange(
+                    url, HttpMethod.GET, new HttpEntity<>(headers), String.class).getBody();
+            return parseBody(html, maxChars);
+        } catch (Exception exception) {
+            return Optional.empty();
+        }
+    }
+
+    /** Package-visible parser for deterministic tests against saved page snapshots. */
+    static Optional<String> parseBody(String html, int maxChars) {
+        try {
+            if (html == null || html.isBlank() || maxChars <= 0) {
+                return Optional.empty();
+            }
+            // 东方财富正文主体在 ContentBody，老页面在 txtinfos；二者只匹配一次，避免 find() 连续调用越过后命中
+            String raw = firstGroup(html, CONTENT_BODY_PATTERN)
+                    .or(() -> firstGroup(html, TXTINFOS_PATTERN))
+                    .orElse(null);
+            if (raw == null) {
+                return Optional.empty();
+            }
+            String text = raw
+                    .replaceAll("(?is)<(script|style).*?</\\1>", " ")
+                    .replaceAll("<[^>]+>", " ")
+                    .replace("&nbsp;", " ")
+                    .replace("&amp;", "&")
+                    .replace("&lt;", "<")
+                    .replace("&gt;", ">")
+                    .replace("&quot;", "\"")
+                    .replaceAll("\\s+", " ")
+                    .trim();
+            if (text.isBlank()) {
+                return Optional.empty();
+            }
+            return Optional.of(text.length() > maxChars
+                    ? text.substring(0, maxChars) + "…" : text);
+        } catch (Exception exception) {
+            return Optional.empty();
+        }
+    }
+
+    private static final Pattern CONTENT_BODY_PATTERN = Pattern.compile(
+            "<div[^>]*id=\"ContentBody\"[^>]*>(.*?)</div>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    private static final Pattern TXTINFOS_PATTERN = Pattern.compile(
+            "<div[^>]*class=\"[^\"]*txtinfos[^\"]*\"[^>]*>(.*?)</div>",
+            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+
+    private static Optional<String> firstGroup(String html, Pattern pattern) {
+        Matcher matcher = pattern.matcher(html);
+        return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
+    }
+
+    private static boolean isEastmoneyArticleUrl(String url) {
+        try {
+            String host = new URI(url).getHost();
+            return host != null && (host.equals("eastmoney.com") || host.endsWith(".eastmoney.com"));
+        } catch (URISyntaxException exception) {
+            return false;
         }
     }
 

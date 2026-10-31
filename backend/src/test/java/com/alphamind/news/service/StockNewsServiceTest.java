@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -81,5 +82,37 @@ class StockNewsServiceTest {
         when(cacheService.getStale("600519")).thenReturn(Optional.empty());
 
         assertTrue(service.news("600519").isEmpty());
+    }
+
+    @Test
+    void fetchesBodiesForFirstArticlesAndSkipsFailures() {
+        NewsArticle ok1 = new NewsArticle("标题一", null, "http://finance.eastmoney.com/a/1.html");
+        NewsArticle noUrl = new NewsArticle("无链接", null, null);
+        NewsArticle ok2 = new NewsArticle("标题二", null, "http://finance.eastmoney.com/a/2.html");
+        NewsArticle failed = new NewsArticle("抓取失败", null, "http://finance.eastmoney.com/a/3.html");
+
+        when(provider.fetchArticleBody("http://finance.eastmoney.com/a/1.html", 500))
+                .thenReturn(Optional.of("正文一"));
+        when(provider.fetchArticleBody("http://finance.eastmoney.com/a/2.html", 500))
+                .thenReturn(Optional.of("正文二"));
+        when(provider.fetchArticleBody("http://finance.eastmoney.com/a/3.html", 500))
+                .thenReturn(Optional.empty());
+
+        Map<String, String> bodies = service.articleBodiesByTitle(List.of(ok1, noUrl, ok2, failed), 3, 500);
+
+        assertEquals(2, bodies.size());
+        assertEquals("正文一", bodies.get("标题一"));
+        assertEquals("正文二", bodies.get("标题二"));
+    }
+
+    @Test
+    void respectsBodyLimitAndToleratesEmptyArticles() {
+        when(provider.fetchArticleBody(anyString(), anyInt())).thenReturn(Optional.of("正文"));
+        NewsArticle first = new NewsArticle("标题一", null, "http://finance.eastmoney.com/a/1.html");
+        NewsArticle second = new NewsArticle("标题二", null, "http://finance.eastmoney.com/a/2.html");
+
+        assertEquals(1, service.articleBodiesByTitle(List.of(first, second), 1, 500).size());
+        assertTrue(service.articleBodiesByTitle(List.of(), 3, 500).isEmpty());
+        assertTrue(service.articleBodiesByTitle(null, 3, 500).isEmpty());
     }
 }

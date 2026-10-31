@@ -7,7 +7,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -55,5 +57,27 @@ public class StockNewsService {
                             hit.snapshot(), NewsResolution.Status.STALE_CACHE,
                             hit.ageSeconds(), warning);
                 });
+    }
+
+    /**
+     * 为前 limit 篇带链接的新闻抓取正文摘录，返回 标题 → 正文。
+     * 单篇失败只是缺席对应条目，绝不抛出、绝不编造正文。
+     */
+    public Map<String, String> articleBodiesByTitle(List<NewsArticle> articles, int limit, int maxChars) {
+        Map<String, String> bodies = new LinkedHashMap<>();
+        if (articles == null || limit <= 0) {
+            return bodies;
+        }
+        for (NewsArticle article : articles) {
+            if (bodies.size() >= limit) {
+                break;
+            }
+            if (article == null || article.url() == null || article.title() == null) {
+                continue;
+            }
+            newsProvider.fetchArticleBody(article.url(), maxChars)
+                    .ifPresent(body -> bodies.putIfAbsent(article.title(), body));
+        }
+        return bodies;
     }
 }

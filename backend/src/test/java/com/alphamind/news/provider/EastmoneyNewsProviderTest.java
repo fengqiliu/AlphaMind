@@ -80,4 +80,63 @@ class EastmoneyNewsProviderTest {
         assertTrue(provider.fetchNews("600519", 0).isEmpty());
         assertEquals("eastmoney", provider.sourceName());
     }
+
+    @Test
+    void parsesArticleBodyFromContentBodyStrippingTagsAndScripts() {
+        String html = """
+                <html><body>
+                <div class="info">摘要</div>
+                <div id="ContentBody">
+                    <p>白酒动销整体低迷，</p>
+                    <script>track("pv");</script>
+                    <p>终端下滑幅度多在10%以上。</p>
+                    <style>.x{color:red}</style>
+                </div>
+                </body></html>
+                """;
+
+        Optional<String> body = EastmoneyNewsProvider.parseBody(html, 500);
+
+        assertTrue(body.isPresent());
+        assertEquals("白酒动销整体低迷， 终端下滑幅度多在10%以上。", body.get());
+    }
+
+    @Test
+    void fallsBackToTxtInfosWhenContentBodyMissing() {
+        String html = "<div class=\"txtinfos\"><p>券商调研反馈动销平淡。</p></div>";
+
+        Optional<String> body = EastmoneyNewsProvider.parseBody(html, 500);
+
+        assertTrue(body.isPresent());
+        assertEquals("券商调研反馈动销平淡。", body.get());
+    }
+
+    @Test
+    void truncatesLongBodyWithEllipsisSuffix() {
+        String html = "<div id=\"ContentBody\">" + "长".repeat(600) + "</div>";
+
+        Optional<String> body = EastmoneyNewsProvider.parseBody(html, 500);
+
+        assertTrue(body.isPresent());
+        assertEquals(501, body.get().length());
+        assertTrue(body.get().endsWith("…"));
+    }
+
+    @Test
+    void rejectsBlankHtmlAndPagesWithoutBodyMarkers() {
+        assertTrue(EastmoneyNewsProvider.parseBody(null, 500).isEmpty());
+        assertTrue(EastmoneyNewsProvider.parseBody("", 500).isEmpty());
+        assertTrue(EastmoneyNewsProvider.parseBody("<div>无标记页面</div>", 500).isEmpty());
+        assertTrue(EastmoneyNewsProvider.parseBody("<div id=\"ContentBody\"></div>", 500).isEmpty());
+    }
+
+    @Test
+    void fetchArticleBodyOnlyAllowsEastmoneyHostsWithoutNetwork() {
+        EastmoneyNewsProvider provider = new EastmoneyNewsProvider(null, mapper);
+
+        assertTrue(provider.fetchArticleBody("https://evil.example.com/a.html", 500).isEmpty());
+        assertTrue(provider.fetchArticleBody("not a url", 500).isEmpty());
+        assertTrue(provider.fetchArticleBody(null, 500).isEmpty());
+        assertTrue(provider.fetchArticleBody("http://finance.eastmoney.com/a/1.html", 0).isEmpty());
+    }
 }

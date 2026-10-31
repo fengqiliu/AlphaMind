@@ -23,6 +23,9 @@ public class SentimentAgent extends BaseAgent {
 
     /** 参与摘要与展示的新闻标题条数。 */
     private static final int NEWS_HEADLINE_LIMIT = 5;
+    /** 参与 LLM 摘要的正文摘录篇数与单篇截断长度。 */
+    private static final int NEWS_BODY_LIMIT = 3;
+    private static final int NEWS_BODY_MAX_CHARS = 500;
 
     private final StockNewsService stockNewsService;
 
@@ -48,8 +51,15 @@ public class SentimentAgent extends BaseAgent {
             // 分析舆情数据
             SentimentDataDTO sentimentData = analyzeSentiment(marketData, news);
 
+            // 正文摘录：让 LLM 摘要基于消息面细节；抓取失败时退回纯标题
+            Map<String, String> bodyByTitle = news
+                    .map(resolution -> stockNewsService.articleBodiesByTitle(
+                            resolution.snapshot().articles(),
+                            NEWS_BODY_LIMIT, NEWS_BODY_MAX_CHARS))
+                    .orElse(Map.of());
+
             // 调用LLM生成舆情综合摘要
-            String aiSummary = generateSentimentSummary(sentimentData, marketData);
+            String aiSummary = generateSentimentSummary(sentimentData, marketData, bodyByTitle);
             sentimentData.setAiSummary(aiSummary);
 
             report.setSentimentData(sentimentData);
@@ -104,7 +114,8 @@ public class SentimentAgent extends BaseAgent {
             """;
     }
 
-    private String generateSentimentSummary(SentimentDataDTO data, MarketDataDTO market) {
+    private String generateSentimentSummary(
+            SentimentDataDTO data, MarketDataDTO market, Map<String, String> bodyByTitle) {
         StringBuilder promptBuilder = new StringBuilder(String.format(
                 "请简要分析 %s 的市场舆情：舆情评分%.0f/100，趋势:%s，利好%d项，利空%d项。评分依据：%s。数据缺口：%s",
                 market.getStockName(), data.getSentimentScore() * 100, data.getSentimentTrend(),
@@ -113,6 +124,11 @@ public class SentimentAgent extends BaseAgent {
         if (data.getRecentHeadlines() != null && !data.getRecentHeadlines().isEmpty()) {
             promptBuilder.append("。以下是最新新闻标题，请结合它们给出贴合实际消息面的判断：");
             data.getRecentHeadlines().forEach(title -> promptBuilder.append("\n- ").append(title));
+        }
+        if (!bodyByTitle.isEmpty()) {
+            promptBuilder.append("\n\n部分资讯正文摘录（来自真实新闻源，帮助理解消息面细节）：");
+            bodyByTitle.forEach((title, body) ->
+                    promptBuilder.append("\n- 《").append(title).append("》").append(body));
         }
         String result = llmCall(getSystemPrompt(), promptBuilder.toString());
         return result != null ? result : data.getAnalysisSummary();
