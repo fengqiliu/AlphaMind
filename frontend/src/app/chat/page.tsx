@@ -6,7 +6,7 @@ import { AgentMessage } from "@/components/agent/AgentMessage";
 import { AgentSelector } from "@/components/agent/AgentSelector";
 import { StockSearch } from "@/components/common/StockSearch";
 import { Button } from "@/components/common/Button";
-import { clearChatSession, createChatSession } from "@/api/client";
+import { clearChatSession, createChatSession, withApiToken } from "@/api/client";
 import type { StockSearchResult } from "@/types";
 import { Send, Loader2, Trash2, Zap } from "lucide-react";
 
@@ -104,7 +104,7 @@ export default function ChatPage() {
     // 关闭上一个连接
     eventSourceRef.current?.close();
 
-    const url = `/api/v1/chat/stream/${sid}?message=${encodeURIComponent(content)}&agentType=${selectedAgent}`;
+    const url = withApiToken(`/api/v1/chat/stream/${sid}?message=${encodeURIComponent(content)}&agentType=${selectedAgent}`);
     const es = new EventSource(url);
     eventSourceRef.current = es;
     let settled = false;
@@ -260,7 +260,12 @@ export default function ChatPage() {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div
+          role="log"
+          aria-live="polite"
+          aria-label="对话消息"
+          className="flex-1 overflow-y-auto p-4 space-y-4"
+        >
           {messages.length === 0 && (
             <div className="h-full flex items-center justify-center">
               <div className="text-center">
@@ -282,16 +287,22 @@ export default function ChatPage() {
           ))}
 
           {isLoading && (
-            <div className="flex items-center gap-3 p-3 bg-[var(--bg-tertiary)] rounded-xl w-fit">
+            <div
+              aria-live="polite"
+              className="flex items-center gap-3 p-3 bg-[var(--bg-tertiary)] rounded-xl w-fit"
+            >
               <Loader2 className="w-5 h-5 text-[var(--accent)] animate-spin" />
-              <span className="text-sm text-[var(--text-secondary)]">
+              <span className="text-sm text-[var(--text-secondary)] break-words">
                 {loadingMessage || "正在分析..."}
               </span>
             </div>
           )}
 
           {error && (
-            <div className="p-3 bg-[var(--bearish-glow)] border border-[var(--bearish)]/30 rounded-xl text-[var(--bearish)] text-sm">
+            <div
+              role="alert"
+              className="p-3 bg-[var(--bearish-glow)] border border-[var(--bearish)]/30 rounded-xl text-[var(--bearish)] text-sm break-words"
+            >
               {error}
             </div>
           )}
@@ -307,6 +318,7 @@ export default function ChatPage() {
               value={inputMessage}
               onChange={(e) => setInputMessage(e.target.value)}
               onKeyDown={handleKeyDown}
+              aria-label="消息输入"
               placeholder={
                 sessionId
                   ? "输入消息... (使用 @Agent名称 指定特定Agent)"
@@ -318,6 +330,7 @@ export default function ChatPage() {
             />
             <Button
               onClick={handleSend}
+              aria-label="发送消息"
               disabled={
                 isLoading ||
                 !sessionId ||

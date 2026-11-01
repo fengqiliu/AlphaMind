@@ -13,6 +13,21 @@ const api = axios.create({
   timeout: 60000,
 });
 
+// 后端配置 ALPHAMIND_API_TOKEN 后启用令牌门禁；未配置时两者都留空，行为不变
+const apiToken = process.env.NEXT_PUBLIC_API_TOKEN;
+if (apiToken) {
+  api.defaults.headers.common["X-API-Token"] = apiToken;
+}
+
+/**
+ * 为 SSE 端点附加令牌查询参数。EventSource 无法自定义请求头，
+ * 后端令牌门禁同时接受 ?token=（仅公网部署配置令牌后需要）。
+ */
+export const withApiToken = (url: string): string => {
+  if (!apiToken) return url;
+  return url + (url.includes("?") ? "&" : "?") + `token=${encodeURIComponent(apiToken)}`;
+};
+
 export const searchStocks = async (
   keyword: string,
 ): Promise<StockSearchResult[]> => {

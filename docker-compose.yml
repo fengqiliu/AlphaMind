@@ -55,6 +55,8 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # 公网部署时设置共享访问令牌；留空表示不启用认证
+      ALPHAMIND_API_TOKEN: ${ALPHAMIND_API_TOKEN:-}
     ports:
       - "8080:8080"
     healthcheck:
@@ -69,6 +71,7 @@ services:
       context: ./frontend
       args:
         BACKEND_API_ORIGIN: http://backend:8080
+        NEXT_PUBLIC_API_TOKEN: ${NEXT_PUBLIC_API_TOKEN:-}
     container_name: alphamind-frontend
     restart: unless-stopped
     depends_on:

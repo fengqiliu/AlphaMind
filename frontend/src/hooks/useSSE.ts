@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useCallback, useEffect } from "react";
+import { withApiToken } from "@/api/client";
 
 export interface SSEOptions {
   onMessage: (event: string, data: unknown) => void;
@@ -22,7 +23,7 @@ export function useSSE() {
       eventSourceRef.current = null;
     }
 
-    const es = new EventSource(url);
+    const es = new EventSource(withApiToken(url));
     eventSourceRef.current = es;
 
     const isCurrent = () => eventSourceRef.current === es;

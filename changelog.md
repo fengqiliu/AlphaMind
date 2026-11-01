@@ -6,6 +6,10 @@
 
 ### Added
 
+- 访问令牌门禁：`ApiTokenAuthConfig` 以 `ALPHAMIND_API_TOKEN` 门控 `/api/**`（未配置即关闭），支持 Bearer/X-API-Token/`?token=` 三种携带方式与常量时间比较，OPTIONS 放行，401 返回统一信封；前端 axios 自动附加请求头、SSE 走查询参数，Docker 构建期变量与 `.env.example` 同步
+- 对话页可访问性：消息列表 `role=log`/`aria-live`，输入框与发送按钮 `aria-label`，加载/错误态 `aria-live`/`role=alert`；消息正文与提示文本 `break-words`，长 URL 不再撑破气泡
+- 新闻正文摘录：`EastmoneyNewsProvider.fetchArticleBody` 解析东方财富文章页（仅限该域名、ContentBody/txtinfos、剔除脚本、500 字截断），`StockNewsService.articleBodiesByTitle` 批量获取前 3 篇（单篇失败跳过），舆情摘要 Prompt 附正文摘录、全部失败退回纯标题
+- 文档统一：CLAUDE.md 改为指向 AGENTS.md 的入口，经核实的有效规则（回测命令、DEBATE 为流水线第 5 阶段、行情读取顺序契约、熔断参数、PromptManager 语义、@mention 路由、SSE 事件顺序、接口清单等）合并回 AGENTS.md；概要/详细/数据库设计说明书标注为历史设计文档
 - 回测收尾：样本内外按持有期留出 h 日间隔，剔除股票不足 5 只的交易日；参与不足 5 只时判定为“数据不足”；`--refresh` 取数失败时沿用旧缓存并在报告注明；报告标注股票池中的 ETF、按数据截止日命名并写明生成日期；评分固定期望值测试替代自我对照。复算后判定仍为“未见区分力”
 - 文档：一致度门槛更正为代码实际值 0.75/0.65/0.55
 

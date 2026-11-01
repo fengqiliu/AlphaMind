@@ -88,7 +88,9 @@ export function AgentMessage({ message, className }: AgentMessageProps) {
       );
     }
     return (
-      <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
+      <p className="whitespace-pre-wrap break-words leading-relaxed">
+        {message.content}
+      </p>
     );
   };
 
