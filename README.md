@@ -16,7 +16,7 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 
 - `MarketAgent`：组合新浪实时报价与东方财富前复权日 K 线，并计算均线
 - `TechnicalAgent`：按技术规则 V1（`TechnicalScoring`）计算 MACD / RSI / KDJ / 布林带并给出 10–95 的技术分及分项
-- `SentimentAgent`：行情代理信号（涨跌幅、PE、换手率、量能）加东方财富个股新闻标题关键词的确定性加权评分，缺失项按可用权重归一化
+- `SentimentAgent`：行情代理信号（涨跌幅、PE、换手率、量能）加东方财富个股新闻标题关键词的确定性加权评分，缺失项按可用权重归一化；LLM 舆情摘要附带前 3 篇新闻正文摘录（每篇最多 500 字，取不到时退回纯标题）
 - `PortfolioAgent`：整合前置结果，按策略生成交易信号与示意交易计划
 - `BullAgent` / `BearAgent` / `NeutralAgent`：基于共享证据从多头、空头、中立视角展开辩论
 - `ArbitratorAgent`：按实际票数裁决，并保存完整票数
@@ -30,6 +30,7 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 
 - SSE 实时推送分析进度与各阶段数据
 - 个股最新资讯卡片（东方财富新闻，含来源与过期标记）
+- 可选的共享访问令牌门禁：配置 `ALPHAMIND_API_TOKEN` 后所有 `/api/**` 需携带令牌，未配置时关闭
 - **个人投资模型复核**（`/investment-model`）：13 个观察标的、原文三档价格、五道决策门、S0–S4 信号等级和组合风险预算；自动取数东方财富财报与估值（PE/PB 近 5 年分位、扣非利润、经营现金流等）供人工复核参考，结论仍由人工确认
 - **技术分离线回测**：与线上同一评分实现、无前视回放，输出可复现的 Markdown 报告
 - 每周推荐 3 支“低位 + 价值”兼顾的重点观察股票，可一键带入分析
@@ -42,11 +43,12 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 
 ## 当前状态
 
-截至 2026-10-26：
+截至 2026-11-01：
 
-- 后端 `mvn test` 159 个离线单元测试全部通过（无 Spring 上下文、无数据库、无网络）
+- 后端 `mvn test` 178 个离线单元测试全部通过（无 Spring 上下文、无数据库、无网络）
 - 技术分、舆情分、综合分与规则一致度口径统一，评分依据、分项和数据缺口随报告保存并在页面、导出中展示
 - 个人投资模型 v1.1 已接入，自动财报与估值快照随复核报告冻结保存
+- 已有共享令牌门禁（单用户访问控制）；多用户账户与数据隔离尚未实现
 - 技术规则 V1 已完成首次历史回测：72 只观察股约 5 年、样本外持有 10 日，**未见区分力**（≥70 分档超额收益不高于 <40 分档，IC 未达显著）。新报告的技术评分说明和每条交易信号理由都会如实注明这一结论；综合分权重与 70/50 阈值暂未调整
 - 舆情分依赖新闻，无法做时间对齐的历史回测；综合信号整体未经验证，仅作规则参考
 
@@ -165,6 +167,11 @@ MARKET_HISTORY_DAYS=120
 
 # 前端 rewrite 目标（默认 http://localhost:8080）
 BACKEND_API_ORIGIN=http://localhost:8080
+
+# 访问令牌（公网部署前强烈建议设置；留空表示不启用认证，仅限本地使用）
+ALPHAMIND_API_TOKEN=
+# 前端需设置为相同值；NEXT_PUBLIC_* 在构建时写入客户端代码
+NEXT_PUBLIC_API_TOKEN=
 ```
 
 ---
@@ -209,6 +216,7 @@ docker compose up -d --build
 
 - 先复制 `.env.example` 为 `.env`。
 - 前端容器通过 `BACKEND_API_ORIGIN=http://backend:8080` 访问后端。
+- 启用令牌时同时设置 `ALPHAMIND_API_TOKEN` 与 `NEXT_PUBLIC_API_TOKEN`；后者是构建期变量，修改后需重新构建前端镜像。
 
 ---
 
@@ -217,7 +225,7 @@ docker compose up -d --build
 ```text
 MarketAgent（实时报价 + 日 K + 均线）
   -> TechnicalAgent（技术规则 V1 技术分）
-  -> SentimentAgent（行情代理信号 + 新闻标题关键词）
+  -> SentimentAgent（行情代理信号 + 新闻标题关键词；LLM 摘要附正文摘录）
   -> PortfolioAgent（交易信号 + 示意交易计划）
   -> [仅 DEBATE] Bull -> Bear -> Neutral -> Arbitrator（按票数裁决）
 ```
@@ -253,6 +261,8 @@ MarketAgent（实时报价 + 日 K + 均线）
 ## API 概览
 
 所有 REST 接口返回 `ApiResponse<T>` 包装（`code`、`message`、`data`）；SSE 接口直接输出具名事件帧。
+
+**访问令牌**：配置 `ALPHAMIND_API_TOKEN` 后，`/api/**` 需通过 `Authorization: Bearer <token>`、`X-API-Token` 请求头或 `?token=` 查询参数携带令牌（`EventSource` 无法自定义请求头，SSE 只能用查询参数），否则返回 401。前端 axios 自动附加请求头，`useSSE` 自动附加查询参数。
 
 ### 分析接口
 
@@ -363,6 +373,8 @@ java -cp target/classes:$(cat cp.txt) com.alphamind.backtest.TechnicalBacktestMa
 
 ## 开发指引
 
+架构、约定、命令与接口契约的唯一权威来源是 [`AGENTS.md`](./AGENTS.md)（`CLAUDE.md` 只是指向它的入口）；剩余优先事项见 [`docs/开发计划.md`](./docs/开发计划.md)。
+
 ### 新增 Agent
 
 1. 继承 `BaseAgent`，实现 `analyze()`、`chat()`、`getSystemPrompt()`
@@ -380,7 +392,7 @@ java -cp target/classes:$(cat cp.txt) com.alphamind.backtest.TechnicalBacktestMa
 
 ### 已知限制
 
-- 未实现登录鉴权与用户隔离：自选股 `userId` 默认为 `default`，管理接口未加授权，不适合直接公网部署
+- 只有单一共享令牌，没有多用户账户与数据隔离：自选股 `userId` 默认为 `default`，管理接口与普通接口使用同一令牌；令牌经由前端构建写入客户端代码，持有前端页面即可获得令牌，只适合个人或小范围使用
 - 股票搜索与每周推荐基于代码内置的静态股票池，未接入外部股票元数据库
 - 分析链路的行情 Provider 不提供 PE、PB 和总市值，这些字段保持为空、不参与估值结论；财报与估值自动取数目前只用于个人投资模型页面
 - 新浪、东方财富均为公网接口，不提供生产 SLA
