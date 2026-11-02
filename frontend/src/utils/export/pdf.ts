@@ -1,0 +1,359 @@
+/** PDF 报告导出（HTML 渲染后转多页 A4）。 */
+import { escapeHtml, signalLabel, debateLabel, getBaseName } from "./shared";
+import { confidenceTitle, confidenceValue } from "@/utils/confidenceMetadata";
+import { modeLabel, strategyLabel } from "@/utils/reportMetadata";
+import { personalModelMarkdown } from "@/utils/personalModelExport";
+import type { AnalysisReport } from "@/types";
+import { SignalType } from "@/types";
+
+function buildReportHtml(report: AnalysisReport): string {
+  if (report.personalModel) {
+    const text = personalModelMarkdown(report)
+      .replaceAll("&", "&amp;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
+    return `<div style="width:714px;padding:40px;background:white;color:#192b35;font-family:'PingFang SC','Microsoft YaHei',sans-serif;"><pre style="font-family:inherit;font-size:13px;line-height:1.8;white-space:pre-wrap;word-break:break-word;">${text}</pre></div>`;
+  }
+  const signal = signalLabel(report.finalSignal);
+  const signalColor =
+    report.finalSignal === SignalType.BUY
+      ? "#22c55e"
+      : report.finalSignal === SignalType.SELL
+        ? "#ef4444"
+        : "#f59e0b";
+  const confidencePercent = confidenceValue(report.confidence);
+  const createdAt = new Date(report.createdAt).toLocaleString("zh-CN");
+  const t = report.technicalIndicators;
+  const m = report.marketData;
+  const s = report.sentimentData;
+
+  const sectionStyle =
+    "margin-bottom:20px;background:#f8fafc;border-radius:8px;padding:16px;border:1px solid #e2e8f0;";
+  const labelStyle =
+    "font-size:11px;color:#64748b;font-family:monospace;margin-bottom:3px;";
+  const valueStyle = "font-size:14px;font-weight:600;color:#0f172a;";
+  const headingStyle =
+    "font-size:13px;font-weight:700;color:#0f172a;margin:0 0 12px;padding-bottom:8px;border-bottom:2px solid #e2e8f0;";
+
+  const header = `
+    <div style="margin-bottom:20px;padding-bottom:16px;border-bottom:3px solid #0ea5e9;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-size:22px;font-weight:800;color:#0f172a;">${report.stockName}</div>
+          <div style="font-size:13px;color:#64748b;font-family:monospace;margin-top:4px;">
+            ${report.stockCode} · AlphaMind 智能分析报告
+          </div>
+          <div style="font-size:12px;color:#64748b;margin-top:6px;">${strategyLabel(report.strategy)} · ${modeLabel(report.mode)}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="display:inline-block;padding:5px 14px;background:${signalColor};color:#fff;border-radius:20px;font-weight:700;font-size:15px;">${signal}</div>
+          <div style="font-size:11px;color:#64748b;margin-top:5px;">${createdAt}</div>
+        </div>
+      </div>
+    </div>`;
+
+  const trade = `
+    <div style="${sectionStyle}">
+      <p style="${headingStyle}">📊 交易建议</p>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:10px;">
+        <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
+          <div style="${labelStyle}">入场价</div>
+          <div style="${valueStyle}">¥${report.tradeSignal.entryPrice.toFixed(2)}</div>
+        </div>
+        <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #22c55e;">
+          <div style="${labelStyle}">目标价</div>
+          <div style="font-size:14px;font-weight:600;color:#22c55e;">¥${report.tradeSignal.targetPrice.toFixed(2)}</div>
+        </div>
+        <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #ef4444;">
+          <div style="${labelStyle}">止损价</div>
+          <div style="font-size:14px;font-weight:600;color:#ef4444;">¥${report.tradeSignal.stopLoss.toFixed(2)}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
+          <span style="${labelStyle}">持仓周期：</span>
+          <span style="font-weight:600;">${report.tradeSignal.holdingPeriodDays} 个交易日</span>
+        </div>
+        <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
+          <span style="${labelStyle}">${confidenceTitle(report.confidence)}：</span>
+          <span style="font-weight:600;">${confidencePercent}（${report.confidence.level}）</span>
+        </div>
+      </div>
+      <div style="background:#fff;padding:10px;margin-bottom:12px;font-size:12px;line-height:1.8;"><div>${escapeHtml(report.confidence.explanation || "旧报告未记录一致度口径")}</div><div>此数值不是胜率或收益概率。</div></div>
+      <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
+        <div style="${labelStyle}">投资理由</div>
+        <div style="font-size:13px;color:#374151;line-height:1.6;">${escapeHtml(report.tradeSignal.rationale)}</div>
+      </div>
+    </div>`;
+
+  const changeColor = m.changePercent >= 0 ? "#22c55e" : "#ef4444";
+  const changeSign = m.changePercent >= 0 ? "+" : "";
+  const marketCells = [
+    { label: "当前价", value: `¥${m.currentPrice.toFixed(2)}` },
+    {
+      label: "涨跌幅",
+      value: `${changeSign}${m.changePercent.toFixed(2)}%`,
+      color: changeColor,
+    },
+    { label: "成交量", value: m.volume.toFixed(0) },
+    { label: "换手率", value: `${m.turnoverRate.toFixed(2)}%` },
+    {
+      label: "市值（亿）",
+      value:
+        m.marketCap == null ? "数据源未提供" : (m.marketCap / 1e8).toFixed(2),
+    },
+    {
+      label: "市盈率",
+      value: m.pe == null ? "数据源未提供" : m.pe.toFixed(2),
+    },
+    {
+      label: "市净率",
+      value: m.pb == null ? "数据源未提供" : m.pb.toFixed(2),
+    },
+    { label: "当日最高", value: `¥${m.high.toFixed(2)}` },
+  ]
+    .map(
+      (item) =>
+        `<div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
+          <div style="${labelStyle}">${item.label}</div>
+          <div style="font-size:13px;font-weight:600;color:${item.color ?? "#0f172a"};">${item.value}</div>
+        </div>`,
+    )
+    .join("");
+
+  const market = `
+    <div style="${sectionStyle}">
+      <p style="${headingStyle}">📈 市场行情</p>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">${marketCells}</div>
+    </div>`;
+
+  const technical = `
+    <div style="${sectionStyle}">
+      <p style="${headingStyle}">📉 技术指标</p>
+      <div style="background:#fff;padding:10px;margin-bottom:12px;font-size:12px;line-height:1.8;"><div>${escapeHtml(t.scoreExplanation || "旧报告未记录技术评分口径")}</div><div>${escapeHtml(Object.entries(t.scoreContributions ?? {}).map(([name, value]) => `${name} ${value}`).join("；"))}</div></div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+        <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
+          <div style="${labelStyle}">技术评分</div>
+          <div style="font-size:18px;font-weight:700;color:#0ea5e9;">${t.technicalScore.toFixed(1)}</div>
+        </div>
+        <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
+          <div style="${labelStyle}">MACD（DIF / DEA）</div>
+          <div style="font-size:12px;font-weight:600;">${t.macd.dif.toFixed(2)} / ${t.macd.dea.toFixed(2)}</div>
+        </div>
+        <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
+          <div style="${labelStyle}">RSI（6 / 12 / 24）</div>
+          <div style="font-size:12px;font-weight:600;">${t.rsi.rsi6.toFixed(1)} / ${t.rsi.rsi12.toFixed(1)} / ${t.rsi.rsi24.toFixed(1)}</div>
+        </div>
+        <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;">
+          <div style="${labelStyle}">KDJ（K / D / J）</div>
+          <div style="font-size:12px;font-weight:600;">${t.kdj.k.toFixed(1)} / ${t.kdj.d.toFixed(1)} / ${t.kdj.j.toFixed(1)}</div>
+        </div>
+      </div>
+    </div>`;
+
+  const sentColor =
+    s.sentimentScore >= 0.6
+      ? "#22c55e"
+      : s.sentimentScore >= 0.4
+        ? "#f59e0b"
+        : "#ef4444";
+  const posRows = (s.positiveFactors ?? [])
+    .map(
+      (f) =>
+        `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${escapeHtml(f)}</div>`,
+    )
+    .join("");
+  const negRows = (s.negativeFactors ?? [])
+    .map(
+      (f) =>
+        `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${escapeHtml(f)}</div>`,
+    )
+    .join("");
+  const newsRows = (s.recentHeadlines ?? [])
+    .map(
+      (h) =>
+        `<div style="font-size:12px;color:#374151;margin-bottom:2px;padding-left:8px;">· ${escapeHtml(h)}</div>`,
+    )
+    .join("");
+  const sentiment = `
+    <div style="${sectionStyle}">
+      <p style="${headingStyle}">💬 舆情分析</p>
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:10px;">
+        <div style="font-size:28px;font-weight:800;color:${sentColor};">
+          ${(s.sentimentScore * 100).toFixed(0)}<span style="font-size:13px;color:#64748b;">/100</span>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:600;">${s.sentimentTrend}</div>
+          <div style="font-size:11px;color:#64748b;">${s.mediaAttention == null ? "媒体关注度未提供" : `历史关注度估算 ${(s.mediaAttention * 100).toFixed(0)}%（非实测）`}</div>
+        </div>
+      </div>
+      <div style="font-size:12px;line-height:1.6;margin-bottom:10px;">评分依据：${escapeHtml(s.scoreExplanation || "旧报告未记录评分口径，不能按当前规则重新解释。")}${(s.dataGaps ?? []).map((gap) => `<div>数据缺口：${escapeHtml(gap)}</div>`).join("")}</div>
+      ${s.analysisSummary ? `<div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;font-size:12px;color:#374151;line-height:1.6;margin-bottom:10px;">${escapeHtml(s.analysisSummary)}</div>` : ""}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        ${posRows ? `<div><div style="font-size:11px;color:#22c55e;font-weight:700;margin-bottom:5px;">▲ 利好因素</div>${posRows}</div>` : ""}
+        ${negRows ? `<div><div style="font-size:11px;color:#ef4444;font-weight:700;margin-bottom:5px;">▼ 风险因素</div>${negRows}</div>` : ""}
+      </div>
+      ${
+        newsRows
+          ? `<div style="margin-top:10px;"><div style="font-size:11px;color:#64748b;font-weight:700;margin-bottom:5px;">📰 最新资讯${
+              s.newsDataSource
+                ? `（来源：${s.newsDataSource}${s.newsStale ? "，过期缓存" : ""}）`
+                : ""
+            }</div>${newsRows}</div>`
+          : ""
+      }
+    </div>`;
+
+  let judgment = "";
+  if (report.judgment?.finalPosition) {
+    const j = report.judgment;
+    const warnings = (j.riskWarnings ?? [])
+      .map(
+        (w) =>
+          `<div style="font-size:12px;color:#374151;margin-bottom:2px;">· ${w}</div>`,
+      )
+      .join("");
+    judgment = `
+      <div style="${sectionStyle}">
+        <p style="${headingStyle}">⚖️ 辩论裁决</p>
+        <div style="display:flex;gap:10px;margin-bottom:10px;">
+          <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;min-width:80px;">
+            <div style="${labelStyle}">最终立场</div>
+            <div style="font-size:14px;font-weight:700;">${debateLabel(j.finalPosition)}</div>
+          </div>
+          <div style="background:#fff;padding:10px;border-radius:6px;border:1px solid #e2e8f0;flex:1;">
+            <div style="${labelStyle}">裁决说明</div>
+            <div style="font-size:12px;color:#374151;line-height:1.5;">${escapeHtml(j.reasoning).replaceAll("\n", "<br>")}</div>
+          </div>
+        </div>
+        ${warnings ? `<div style="background:#fef2f2;padding:10px;border-radius:6px;border:1px solid #fecaca;"><div style="font-size:11px;color:#ef4444;font-weight:700;margin-bottom:5px;">⚠️ 风险提示</div>${warnings}</div>` : ""}
+      </div>`;
+  }
+
+  let debateViews = "";
+  if (report.debateViews?.length) {
+    const rows = report.debateViews
+      .map((dv) => {
+        const c =
+          dv.position === "BULLISH"
+            ? "#22c55e"
+            : dv.position === "BEARISH"
+              ? "#ef4444"
+              : "#f59e0b";
+        return `<div style="background:#fff;padding:10px;border-radius:6px;border-left:3px solid ${c};margin-bottom:8px;">
+          <div style="font-size:11px;font-weight:700;color:${c};margin-bottom:4px;">${debateLabel(dv.position)}</div>
+          <div style="font-size:12px;color:#374151;line-height:1.5;">${escapeHtml(dv.view).replaceAll("\n", "<br>")}</div>
+        </div>`;
+      })
+      .join("");
+    debateViews = `
+      <div style="${sectionStyle}">
+        <p style="${headingStyle}">🗣️ 辩论观点</p>
+        ${rows}
+      </div>`;
+  }
+
+  const footer = `
+    <div style="margin-top:20px;padding-top:10px;border-top:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-size:10px;color:#94a3b8;">AlphaMind 智能股票分析系统 · 本报告由 AI 生成，仅供参考，不构成投资建议</div>
+      <div style="font-size:10px;color:#94a3b8;font-family:monospace;">${createdAt}</div>
+    </div>`;
+
+  return `<div style="width:714px;font-family:'PingFang SC','Microsoft YaHei','Helvetica Neue',Arial,sans-serif;font-size:14px;line-height:1.5;color:#0f172a;background:#ffffff;padding:40px;">
+    ${header}${trade}${market}${technical}${sentiment}${judgment}${debateViews}${footer}
+  </div>`;
+}
+
+/**
+ * 生成 PDF 报告并触发下载。
+ * 使用 html2canvas 将报告 HTML 渲染为图片，再通过 jsPDF 输出多页 A4 PDF。
+ * jspdf 和 html2canvas 均为动态导入，不影响首屏包体积。
+ */
+export async function downloadReportPdf(report: AnalysisReport): Promise<void> {
+  // Dynamic imports — keep initial bundle lean
+  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+    import("jspdf"),
+    import("html2canvas"),
+  ]);
+
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText =
+    "position:absolute;left:-9999px;top:0;z-index:-1;overflow:visible;";
+  wrapper.innerHTML = buildReportHtml(report);
+  document.body.appendChild(wrapper);
+
+  try {
+    const el = wrapper.firstElementChild as HTMLElement;
+    const canvas = await html2canvas(el, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      logging: false,
+    });
+
+    const pdf = new jsPDF({
+      orientation: "portrait",
+      unit: "mm",
+      format: "a4",
+    });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const pixelsPerPage = Math.floor(canvas.width * pageH / pageW);
+    const bounds = el.getBoundingClientRect();
+    const canvasScale = canvas.width / bounds.width;
+    const protectedBlocks = Array.from(el.querySelectorAll("div")).map(block => {
+      const rect = block.getBoundingClientRect();
+      return { top: Math.floor((rect.top - bounds.top) * canvasScale),
+        bottom: Math.ceil((rect.bottom - bounds.top) * canvasScale), height: rect.height * canvasScale };
+    }).filter(block => block.height > 0 && block.height <= pixelsPerPage * 0.3);
+    for (const heading of el.querySelectorAll("p")) {
+      const rect = heading.getBoundingClientRect();
+      const following = heading.nextElementSibling?.getBoundingClientRect();
+      const continuation = Math.min(80, following?.height ?? 0) * canvasScale;
+      protectedBlocks.push({top: Math.floor((rect.top - bounds.top) * canvasScale),
+        bottom: Math.ceil((rect.bottom - bounds.top) * canvasScale + continuation),
+        height: rect.height * canvasScale + continuation});
+    }
+    const context = canvas.getContext("2d");
+    let start = 0;
+    while (start < canvas.height) {
+      let end = Math.min(start + pixelsPerPage, canvas.height);
+      // 在页尾附近寻找不含深色文字的连续空行，避免把新增长说明或数字截成上下两半。
+      if (end < canvas.height && context) {
+        const searchStart = Math.max(start + Math.floor(pixelsPerPage * 0.85), end - 160);
+        const rows = context.getImageData(0, searchStart, canvas.width, end - searchStart);
+        let blankRows = 0;
+        for (let row = rows.height - 1; row >= 0; row--) {
+          let hasInk = false;
+          for (let column = 0; column < rows.width; column++) {
+            const index = (row * rows.width + column) * 4;
+            if (Math.min(rows.data[index], rows.data[index + 1], rows.data[index + 2]) < 180) {
+              hasInk = true;
+              break;
+            }
+          }
+          blankRows = hasInk ? 0 : blankRows + 1;
+          if (blankRows >= 4) { end = searchStart + row + 2; break; }
+        }
+      }
+      // 小型指标卡整体移到下一页，避免标签和值被分到两页。
+      for (const block of protectedBlocks) {
+        if (block.top > start + pixelsPerPage * 0.5 && end > block.top && end < block.bottom)
+          end = block.top;
+      }
+      const slice = document.createElement("canvas");
+      slice.width = canvas.width;
+      slice.height = end - start;
+      const sliceContext = slice.getContext("2d");
+      if (!sliceContext) throw new Error("无法创建PDF分页画布");
+      sliceContext.drawImage(canvas, 0, start, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
+      if (start > 0) pdf.addPage();
+      pdf.addImage(slice.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, pageW, slice.height / canvas.width * pageW);
+      start = end;
+    }
+
+    pdf.save(`${getBaseName(report)}.pdf`);
+  } finally {
+    document.body.removeChild(wrapper);
+  }
+}
