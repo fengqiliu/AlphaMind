@@ -4,9 +4,9 @@
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Java](https://img.shields.io/badge/Java-17-green.svg)
-![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.4.1-orange.svg)
-![Spring AI](https://img.shields.io/badge/Spring%20AI-1.0.0-6DB33F.svg)
-![Next.js](https://img.shields.io/badge/Next.js-16.2.4-blueviolet.svg)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.5.16-orange.svg)
+![Spring AI](https://img.shields.io/badge/Spring%20AI-1.1.8-6DB33F.svg)
+![Next.js](https://img.shields.io/badge/Next.js-16.4.3-blueviolet.svg)
 
 ---
 
@@ -35,6 +35,7 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 - **技术分离线回测**：与线上同一评分实现、无前视回放，输出可复现的 Markdown 报告
 - 每周推荐 3 支“低位 + 价值”兼顾的重点观察股票，可一键带入分析
 - 行情、新闻、财报估值均为“新鲜缓存 → 真实数据源 → 带告警的过期缓存 → 明确失败”
+- 外部数据并发获取：实时报价与日 K 同时请求，新闻正文并发抓取并按链接缓存 24 小时，分析开始即在后台预取新闻，与行情/技术阶段重叠
 - LLM 可选接入（多模型 + 熔断）；未配置 API Key 时自动降级为确定性模板输出
 - 分析报告持久化（PostgreSQL jsonb + Flyway），历史详情可完整还原并导出 JSON / Markdown / PDF
 - 会话记忆（Redis，不可用时自动降级本地内存）
@@ -43,12 +44,13 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 
 ## 当前状态
 
-截至 2026-11-01：
+截至 2026-11-02：
 
-- 后端 `mvn test` 178 个离线单元测试全部通过（无 Spring 上下文、无数据库、无网络）
+- 后端 `mvn test` 198 个离线单元测试全部通过（无 Spring 上下文、无数据库、无网络）
 - 技术分、舆情分、综合分与规则一致度口径统一，评分依据、分项和数据缺口随报告保存并在页面、导出中展示
 - 个人投资模型 v1.1 已接入，自动财报与估值快照随复核报告冻结保存
 - 已有共享令牌门禁（单用户访问控制）；多用户账户与数据隔离尚未实现
+- 依赖已升级到 Spring Boot 3.5.16 / Spring AI 1.1.8、Next.js 16.4.3 / React 19.3，前端生产依赖安全审计 0 漏洞
 - 技术规则 V1 已完成首次历史回测：72 只观察股约 5 年、样本外持有 10 日，**未见区分力**（≥70 分档超额收益不高于 <40 分档，IC 未达显著）。新报告的技术评分说明和每条交易信号理由都会如实注明这一结论；综合分权重与 70/50 阈值暂未调整
 - 舆情分依赖新闻，无法做时间对齐的历史回测；综合信号整体未经验证，仅作规则参考
 
@@ -63,8 +65,8 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 | 组件         | 版本 / 说明                                                    |
 | ------------ | -------------------------------------------------------------- |
 | Java         | 17                                                             |
-| Spring Boot  | 3.4.1                                                          |
-| Spring AI    | 1.0.0 GA                                                       |
+| Spring Boot  | 3.5.16                                                         |
+| Spring AI    | 1.1.8                                                          |
 | 通信         | REST + Server-Sent Events (WebFlux Flux)                       |
 | 数据库       | PostgreSQL（jsonb 字段）+ Flyway 迁移                          |
 | 缓存         | Redis（可选，不可用时降级本地内存）                            |
@@ -75,13 +77,13 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 
 | 组件        | 版本 / 说明                                      |
 | ----------- | ------------------------------------------------ |
-| Next.js     | 16.2.4（App Router）                             |
-| React       | 19                                               |
+| Next.js     | 16.4.3（App Router）                             |
+| React       | 19.3                                             |
 | TypeScript  | 5                                                |
 | 状态管理    | Zustand                                          |
 | UI          | Tailwind CSS 4 + Radix primitives + lucide-react |
 | HTTP 客户端 | Axios（REST） + EventSource（SSE）               |
-| 图表        | ECharts                                          |
+| 图表        | ECharts（按需引入）                              |
 
 ---
 
@@ -102,7 +104,7 @@ AlphaMind/
 │   │   ├── news/           # 个股新闻数据源与缓存
 │   │   ├── repository/     # JPA 仓库
 │   │   ├── scoring/        # TechnicalScoring、规则一致度、辩论证据
-│   │   ├── service/        # 编排器、分析/历史服务、记忆、LLM 管理、Prompt 版本
+│   │   ├── service/        # 编排器、分析/历史/对话服务、记忆、LLM 管理、Prompt 版本
 │   │   └── strategy/       # 策略配置与信号规划
 │   ├── src/main/resources/
 │   │   ├── application.yml / application-dev.yml
@@ -112,10 +114,11 @@ AlphaMind/
 │   ├── src/
 │   │   ├── app/            # 页面：/ chat/ history/ watchlist/ investment-model/
 │   │   ├── api/            # Axios API 客户端
-│   │   ├── components/     # UI 组件（analysis/ chart/ common/ agent/ …）
-│   │   ├── hooks/          # useSSE、useAnalysisSession 等
+│   │   ├── components/     # UI 组件（analysis/ chart/ common/ agent/ investment/ …）
+│   │   ├── hooks/          # useSSE、useAnalysisSession、useFundamentals 等
 │   │   ├── stores/         # Zustand 状态（analysis / chat / watchlist）
-│   │   └── types/          # TypeScript 类型定义
+│   │   ├── types/          # TypeScript 类型定义
+│   │   └── utils/          # 导出（export/：JSON / Markdown / PDF）、ECharts 按需注册等
 │   ├── next.config.ts      # /api/:path* 代理到 BACKEND_API_ORIGIN
 │   └── package.json
 ├── e2e/                    # Playwright 端到端测试
@@ -164,6 +167,8 @@ FETCH_REAL_DATA=true
 MARKET_CACHE_FRESH_TTL_SECONDS=30
 MARKET_CACHE_STALE_MAX_AGE_SECONDS=86400
 MARKET_HISTORY_DAYS=120
+# 外部数据并发请求的线程数（默认 16）
+ALPHAMIND_IO_THREADS=16
 
 # 前端 rewrite 目标（默认 http://localhost:8080）
 BACKEND_API_ORIGIN=http://localhost:8080
@@ -389,6 +394,12 @@ java -cp target/classes:$(cat cp.txt) com.alphamind.backtest.TechnicalBacktestMa
 ### 数据源
 
 行情读取顺序严格为“新鲜缓存 → 真实 Provider 链 → 明确标注的过期缓存 → `MarketDataUnavailableException`”，不要插入随机或静态兜底数据。`FETCH_REAL_DATA=false` 会禁止外部行情读取。过期读取的告警需要传递到界面。
+
+互不依赖的外部读取统一在 `ConcurrencyConfig.IoExecutor` 线程池上并发执行；不要在该线程池里运行 Agent 逻辑（Agent 上下文是 `ThreadLocal`）。
+
+### 前端图表
+
+ECharts 通过 `src/utils/echarts.ts` 按需注册，只打包用到的图表与组件；新增图表类型时在那里注册，不要 `import * as echarts from "echarts"`。
 
 ### 已知限制
 
