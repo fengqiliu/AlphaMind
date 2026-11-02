@@ -18,7 +18,10 @@ import { cn, formatPercent, formatNumber } from "@/utils";
 export default function WatchlistPage() {
   const [items, setItems] = useState<WatchlistItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // 加载失败替换列表并提供重试；添加/删除失败只在列表上方提示，不隐藏已有自选股
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   const getMarketName = (code: string) => {
     if (code.startsWith("688")) return "科创板";
@@ -33,20 +36,22 @@ export default function WatchlistPage() {
     let cancelled = false;
     const load = async () => {
       setIsLoading(true);
+      setLoadError(null);
       try {
         const data = await getWatchlist();
         if (!cancelled) setItems(data);
       } catch {
-        if (!cancelled) setError("加载自选股失败");
+        if (!cancelled) setLoadError("加载自选股失败，请检查后端服务后重试");
       } finally {
         if (!cancelled) setIsLoading(false);
       }
     };
     load();
     return () => { cancelled = true; };
-  }, []);
+  }, [attempt]);
 
   const handleAddStock = async (stock: StockSearchResult) => {
+    setActionError(null);
     try {
       await addToWatchlist(stock.code);
       const newItem: WatchlistItem = {
@@ -59,38 +64,38 @@ export default function WatchlistPage() {
         newItem,
       ]);
     } catch {
-      setError("添加失败，请稍后重试");
+      setActionError(`添加 ${stock.name} 失败，请稍后重试`);
     }
   };
 
   const handleRemoveStock = async (stockCode: string) => {
+    setActionError(null);
     try {
       await removeFromWatchlist(stockCode);
       setItems((prev) => prev.filter((i) => i.stockCode !== stockCode));
     } catch {
-      setError("删除失败，请稍后重试");
+      setActionError("删除失败，请稍后重试");
     }
   };
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6 px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between animate-enter">
+      <header className="flex flex-wrap items-center justify-between gap-4 animate-enter">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            <span className="gradient-text">自选股</span>
-          </h1>
-          <p className="text-sm text-[var(--text-muted)] mt-1 font-mono">
-            PERSONAL WATCHLIST MANAGEMENT
+          <p className="mb-2 text-[11px] font-medium text-[var(--accent)]">
+            关注列表
+          </p>
+          <h1 className="text-3xl font-semibold tracking-tight">自选股</h1>
+          <p className="mt-2 text-sm text-[var(--text-secondary)]">
+            收藏关注的股票，随时发起一次新的分析。
           </p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 glass-card">
-          <Star className="w-4 h-4 text-[var(--neutral)]" />
-          <span className="text-xs font-mono text-[var(--text-secondary)]">
-            {items.length} 只自选
-          </span>
-        </div>
-      </div>
+        <span className="inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-full border border-[var(--border)] bg-white px-4 py-2 text-xs text-[var(--text-secondary)]">
+          <Star className="h-3.5 w-3.5 text-[var(--neutral)]" />
+          {items.length} 只自选
+        </span>
+      </header>
 
       {/* Add Stock */}
       <div className="glass-card-glow p-5 animate-enter delay-100">
@@ -111,6 +116,15 @@ export default function WatchlistPage() {
         />
       </div>
 
+      {actionError && (
+        <p
+          role="alert"
+          className="rounded-xl bg-[var(--bearish-glow)] p-3 text-sm text-[var(--bearish)]"
+        >
+          {actionError}
+        </p>
+      )}
+
       {/* Watchlist */}
       <div className="glass-card overflow-hidden animate-enter delay-200">
         <div className="p-4 border-b border-[var(--border)] flex items-center justify-between">
@@ -124,9 +138,12 @@ export default function WatchlistPage() {
           <div className="p-8 flex items-center justify-center">
             <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin" />
           </div>
-        ) : error ? (
-          <div className="p-8 text-center">
-            <p className="text-[var(--bearish)] text-sm">{error}</p>
+        ) : loadError ? (
+          <div role="alert" className="flex flex-col items-center gap-3 p-8 text-center">
+            <p className="text-sm text-[var(--bearish)]">{loadError}</p>
+            <Button variant="outline" size="sm" onClick={() => setAttempt((value) => value + 1)}>
+              重新加载
+            </Button>
           </div>
         ) : items.length === 0 ? (
           <div className="p-12 text-center">
@@ -134,7 +151,7 @@ export default function WatchlistPage() {
               <Star className="w-8 h-8 text-[var(--text-muted)]" />
             </div>
             <p className="text-[var(--text-secondary)] mb-2">暂无自选股</p>
-            <p className="text-sm text-[var(--text-muted)] font-mono">
+            <p className="text-sm text-[var(--text-muted)]">
               搜索并添加感兴趣的股票
             </p>
           </div>

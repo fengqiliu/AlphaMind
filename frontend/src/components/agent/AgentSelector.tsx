@@ -75,12 +75,12 @@ export function AgentSelector({
   ];
 
   return (
-    <div className={cn("space-y-4", className)}>
+    <div className={cn("space-y-3", className)}>
       {showPipeline && (
         <div>
-          <div className="text-[10px] text-[var(--text-muted)] mb-3 font-mono tracking-wider flex items-center gap-2">
+          <div className="text-xs text-[var(--text-muted)] mb-2 flex items-center gap-2">
             <span className="w-1 h-4 bg-[var(--accent)] rounded-full" />
-            PIPELINE MODE
+            流水线 Agent
           </div>
           <div className="flex flex-wrap gap-2">
             {pipelineAgents.map((agent) => {
@@ -120,9 +120,9 @@ export function AgentSelector({
 
       {showDebate && (
         <div>
-          <div className="text-[10px] text-[var(--text-muted)] mb-3 font-mono tracking-wider flex items-center gap-2">
+          <div className="text-xs text-[var(--text-muted)] mb-2 flex items-center gap-2">
             <span className="w-1 h-4 bg-[var(--neutral)] rounded-full" />
-            DEBATE MODE
+            辩论 Agent
           </div>
           <div className="flex flex-wrap gap-2">
             {debateAgents.map((agent) => {

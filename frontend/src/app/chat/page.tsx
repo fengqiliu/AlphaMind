@@ -181,18 +181,17 @@ export default function ChatPage() {
   };
 
   return (
-    <div className="p-6 h-[calc(100vh-3rem)] flex flex-col">
+    <div className="flex min-h-[calc(100vh-3rem)] flex-col px-4 py-6 sm:px-7 lg:px-9 lg:py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6 animate-enter">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            <span className="gradient-text">AI对话</span>
-          </h1>
-          <p className="text-sm text-[var(--text-muted)] mt-1 font-mono">
-            MULTI-AGENT CONVERSATION INTERFACE
-          </p>
-        </div>
-      </div>
+      <header className="mb-6 animate-enter">
+        <p className="mb-2 text-[11px] font-medium text-[var(--accent)]">
+          多 Agent 对话
+        </p>
+        <h1 className="text-3xl font-semibold tracking-tight">AI对话</h1>
+        <p className="mt-2 text-sm text-[var(--text-secondary)]">
+          围绕一只股票向各个 Agent 追问，回答基于它最近一次的分析报告。
+        </p>
+      </header>
 
       {/* Stock Selection */}
       {!stockSelected && (
@@ -232,7 +231,7 @@ export default function ChatPage() {
                 <div className="font-semibold text-lg">AI分析师</div>
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-[var(--bullish)] rounded-full pulse-live" />
-                  <span className="text-xs text-[var(--text-muted)] font-mono">
+                  <span className="text-xs text-[var(--text-muted)]">
                     {sessionId ? "在线" : "连接中"}
                   </span>
                 </div>
@@ -253,7 +252,7 @@ export default function ChatPage() {
       )}
 
       {/* Messages Container */}
-      <div className="flex-1 glass-card overflow-hidden flex flex-col animate-enter delay-200">
+      <div className="flex min-h-[32rem] flex-1 flex-col overflow-hidden glass-card animate-enter delay-200">
         {/* Agent Selector */}
         <div className="p-4 border-b border-[var(--border)]">
           <AgentSelector selected={selectedAgent} onChange={setSelectedAgent} />
@@ -264,7 +263,7 @@ export default function ChatPage() {
           role="log"
           aria-live="polite"
           aria-label="对话消息"
-          className="flex-1 overflow-y-auto p-4 space-y-4"
+          className="min-h-56 flex-1 space-y-4 overflow-y-auto p-4"
         >
           {messages.length === 0 && (
             <div className="h-full flex items-center justify-center">
@@ -275,7 +274,7 @@ export default function ChatPage() {
                 <p className="text-[var(--text-secondary)] mb-2">
                   开始对话吧！
                 </p>
-                <p className="text-sm text-[var(--text-muted)] font-mono max-w-md">
+                <p className="text-sm text-[var(--text-muted)] max-w-md">
                   输入消息与AI分析师对话，或使用 @Agent名称 指定特定Agent
                 </p>
               </div>
@@ -322,9 +321,11 @@ export default function ChatPage() {
               placeholder={
                 sessionId
                   ? "输入消息... (使用 @Agent名称 指定特定Agent)"
-                  : "正在创建会话..."
+                  : isCreatingSession
+                    ? "正在创建会话..."
+                    : "请先在上方选择要分析的股票"
               }
-              className="flex-1 min-h-[48px] max-h-32 px-4 py-3 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border)] text-sm resize-none focus:outline-none focus:border-[var(--accent)] transition-colors font-mono"
+              className="flex-1 min-h-[48px] max-h-32 px-4 py-3 rounded-xl bg-[var(--bg-tertiary)] border border-[var(--border)] text-sm resize-none focus:outline-none focus:border-[var(--accent)] transition-colors"
               rows={1}
               disabled={isLoading || !sessionId || isCreatingSession || isClearingSession}
             />
@@ -347,7 +348,7 @@ export default function ChatPage() {
               )}
             </Button>
           </div>
-          <div className="mt-2 text-xs text-[var(--text-muted)] font-mono">
+          <div className="mt-2 text-xs text-[var(--text-muted)]">
             按 Enter 发送，Shift + Enter 换行
           </div>
         </div>
