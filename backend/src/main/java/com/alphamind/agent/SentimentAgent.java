@@ -24,14 +24,32 @@ public class SentimentAgent extends BaseAgent {
     /** 参与摘要与展示的新闻标题条数。 */
     private static final int NEWS_HEADLINE_LIMIT = 5;
     /** 参与 LLM 摘要的正文摘录篇数与单篇截断长度。 */
-    private static final int NEWS_BODY_LIMIT = 3;
-    private static final int NEWS_BODY_MAX_CHARS = 500;
+    public static final int NEWS_BODY_LIMIT = 3;
+    public static final int NEWS_BODY_MAX_CHARS = 500;
+    /** 编排器在分析开始时发起的新闻预取（CompletableFuture&lt;Optional&lt;NewsResolution&gt;&gt;）。 */
+    public static final String NEWS_PREFETCH = "newsPrefetch";
 
     private final StockNewsService stockNewsService;
 
     public SentimentAgent(StockNewsService stockNewsService) {
         super(AgentType.SENTIMENT);
         this.stockNewsService = stockNewsService;
+    }
+
+    /** 优先使用编排器预取的结果；没有预取或预取失败时同步读取。 */
+    private Optional<NewsResolution> readNews(String stockCode) {
+        java.util.concurrent.CompletableFuture<Optional<NewsResolution>> prefetch = getContext(NEWS_PREFETCH);
+        if (prefetch != null) {
+            try {
+                Optional<NewsResolution> prefetched = prefetch.join();
+                if (prefetched.isPresent()) {
+                    return prefetched;
+                }
+            } catch (RuntimeException e) {
+                logInfo("新闻预取不可用，改为同步读取: " + e.getMessage());
+            }
+        }
+        return stockNewsService.news(stockCode);
     }
 
     @Override
@@ -45,7 +63,7 @@ public class SentimentAgent extends BaseAgent {
             }
 
             // 真实新闻源（失败时为 empty，舆情分析继续但不编造新闻）
-            Optional<NewsResolution> news = stockNewsService.news(report.getStockCode())
+            Optional<NewsResolution> news = readNews(report.getStockCode())
                     .filter(resolution -> !resolution.snapshot().articles().isEmpty());
 
             // 分析舆情数据

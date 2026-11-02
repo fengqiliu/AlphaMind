@@ -3,7 +3,9 @@ package com.alphamind.market.service;
 import com.alphamind.market.provider.DailyKline;
 import com.alphamind.market.provider.MarketDataProvider;
 import com.alphamind.market.provider.MarketQuote;
+import com.alphamind.config.ConcurrencyConfig;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -11,6 +13,9 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
+import java.util.concurrent.Executor;
 
 /**
  * Assembles a complete snapshot from an ordered set of specialised providers.
@@ -23,6 +28,7 @@ public class MarketDataProviderChain {
     public static final int DEFAULT_HISTORY_DAYS = 60;
 
     private final List<MarketDataProvider> providers;
+    private final Executor executor;
 
     @Value("${alphamind.market.fetch-real-data:true}")
     private boolean fetchRealData = true;
@@ -31,7 +37,17 @@ public class MarketDataProviderChain {
     private int historyDays = DEFAULT_HISTORY_DAYS;
 
     public MarketDataProviderChain(List<MarketDataProvider> providers) {
+        this(providers, Runnable::run);
+    }
+
+    @Autowired
+    public MarketDataProviderChain(List<MarketDataProvider> providers, ConcurrencyConfig.IoExecutor io) {
+        this(providers, io.executor());
+    }
+
+    public MarketDataProviderChain(List<MarketDataProvider> providers, Executor executor) {
         this.providers = List.copyOf(providers);
+        this.executor = executor;
     }
 
     public MarketDataSnapshot fetch(String stockCode, String stockNameHint) {
@@ -51,21 +67,23 @@ public class MarketDataProviderChain {
             throw new IllegalArgumentException("historyDays 必须大于 0");
         }
 
-        ProviderValue<MarketQuote> quote = providers.stream()
+        // 报价与日 K 互不依赖，并发请求；行情阶段耗时约为两者中较慢的一个
+        CompletableFuture<ProviderValue<MarketQuote>> quoteFuture = CompletableFuture.supplyAsync(() -> providers.stream()
                 .map(provider -> new ProviderValue<>(provider.sourceName(),
                         safely(() -> provider.fetchQuote(stockCode, stockNameHint),
                                 provider, stockCode, "实时报价")))
                 .filter(ProviderValue::isPresent)
                 .findFirst()
-                .orElseThrow(() -> unavailable(stockCode, "实时行情"));
-
-        ProviderValue<List<DailyKline>> history = providers.stream()
+                .orElseThrow(() -> unavailable(stockCode, "实时行情")), executor);
+        CompletableFuture<ProviderValue<List<DailyKline>>> historyFuture = CompletableFuture.supplyAsync(() -> providers.stream()
                 .map(provider -> new ProviderValue<>(provider.sourceName(),
                         safely(() -> provider.fetchDailyKlines(stockCode, historyDays),
                                 provider, stockCode, "日K线")))
                 .filter(value -> value.value().filter(bars -> bars.size() >= historyDays).isPresent())
                 .findFirst()
-                .orElseThrow(() -> unavailable(stockCode, historyDays + " 日K线"));
+                .orElseThrow(() -> unavailable(stockCode, historyDays + " 日K线")), executor);
+        ProviderValue<MarketQuote> quote = join(quoteFuture);
+        ProviderValue<List<DailyKline>> history = join(historyFuture);
 
         List<DailyKline> latestBars = history.value().orElseThrow().stream()
                 .sorted(Comparator.comparing(DailyKline::tradeDate))
@@ -84,6 +102,18 @@ public class MarketDataProviderChain {
                 history.sourceName(),
                 Instant.now()
         );
+    }
+
+    /** 解开 CompletionException，保持调用方看到的异常类型与顺序执行时一致。 */
+    private static <T> T join(CompletableFuture<T> future) {
+        try {
+            return future.join();
+        } catch (CompletionException e) {
+            if (e.getCause() instanceof RuntimeException runtime) {
+                throw runtime;
+            }
+            throw e;
+        }
     }
 
     private MarketDataUnavailableException unavailable(String stockCode, String dataKind) {

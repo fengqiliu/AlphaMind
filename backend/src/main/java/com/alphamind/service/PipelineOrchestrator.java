@@ -7,6 +7,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Lazy;
+import com.alphamind.news.service.NewsResolution;
+import com.alphamind.news.service.StockNewsService;
+import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -27,6 +31,7 @@ public class PipelineOrchestrator {
     private final SentimentAgent sentimentAgent;
     private final PortfolioAgent portfolioAgent;
     private final DebateOrchestrator debateOrchestrator;
+    private final StockNewsService stockNewsService;
 
     /** 向量记忆服务（可选，无 Redis Stack 时自动降级） */
     @Autowired(required = false)
@@ -68,6 +73,10 @@ public class PipelineOrchestrator {
             }
         }
 
+        // 新闻与正文不依赖行情结果：在行情/技术阶段并行预取，舆情阶段直接使用
+        CompletableFuture<Optional<NewsResolution>> newsPrefetch = stockNewsService.prefetch(
+                stockCode, SentimentAgent.NEWS_BODY_LIMIT, SentimentAgent.NEWS_BODY_MAX_CHARS);
+
         try {
             // Stage 1: Market Agent - 采集行情数据
             emit(eventConsumer, AnalysisStage.MARKET, "正在采集行情数据...");
@@ -84,6 +93,7 @@ public class PipelineOrchestrator {
             // Stage 3: Sentiment Agent - 舆情分析
             emit(eventConsumer, AnalysisStage.SENTIMENT, "正在分析舆情数据...");
             initializeAgentContext(sentimentAgent, report, finalStrategy, contextSummary);
+            sentimentAgent.setContext(SentimentAgent.NEWS_PREFETCH, newsPrefetch);
             report = sentimentAgent.analyze(report);
             emitData(eventConsumer, AgentType.SENTIMENT, report.getSentimentData());
 

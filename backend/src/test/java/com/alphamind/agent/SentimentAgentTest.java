@@ -140,4 +140,29 @@ class SentimentAgentTest {
         assertNull(actual.getMediaAttention());
         assertEquals(List.of("公司回购股份"), actual.getRecentHeadlines());
     }
+
+    @Test
+    void usesPrefetchedNewsInsteadOfFetchingAgain() {
+        var article = new com.alphamind.news.provider.NewsArticle("公司回购股份", null, null);
+        var snapshot = new com.alphamind.news.service.NewsSnapshot("600519", java.util.List.of(article), "eastmoney", java.time.Instant.now());
+        var resolution = new com.alphamind.news.service.NewsResolution(snapshot, com.alphamind.news.service.NewsResolution.Status.LIVE, 0, null);
+        agent.setContext(SentimentAgent.NEWS_PREFETCH,
+                java.util.concurrent.CompletableFuture.completedFuture(java.util.Optional.of(resolution)));
+
+        var actual = analyze(market(20.0));
+
+        org.mockito.Mockito.verify(news, org.mockito.Mockito.never()).news(org.mockito.ArgumentMatchers.anyString());
+        assertTrue(actual.getScoreExplanation().contains("新闻标题关键词"));
+    }
+
+    @Test
+    void failedPrefetchFallsBackToSynchronousRead() {
+        agent.setContext(SentimentAgent.NEWS_PREFETCH,
+                java.util.concurrent.CompletableFuture.failedFuture(new IllegalStateException("boom")));
+        org.mockito.Mockito.when(news.news("600519")).thenReturn(java.util.Optional.empty());
+
+        analyze(market(20.0));
+
+        org.mockito.Mockito.verify(news).news("600519");
+    }
 }
