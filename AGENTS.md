@@ -20,7 +20,7 @@ npm run lint     # ESLint check
 
 > There is no `typecheck` script and no frontend test runner; `npm run build` is the type-check gate.
 
-### Backend (Spring Boot 3.4)
+### Backend (Spring Boot 3.5)
 
 ```bash
 cd backend
@@ -135,6 +135,8 @@ The `BaseAgent.llmCall()` follows a fallback chain: `LlmManager` (multi-model) �
 
 **Market data read order is strict**: fresh cache → real provider chain → explicitly-labelled stale cache → `MarketDataUnavailableException`. Never insert a random or static fallback — callers must be able to distinguish real data from a degraded read. `MarketDataProviderChain` composes quote (Sina) and daily K-line (EastMoney) providers independently; a snapshot may mix sources and records each source name. `ResilientMarketDataService` returns a `MarketDataResolution` carrying `Status` (`FRESH_CACHE`/`LIVE`/`STALE_CACHE`), cache age, and a Chinese warning on stale reads — propagate that warning to the UI instead of swallowing it. Providers never supply PE/PB/market cap; those fields stay null and must not feed valuation conclusions.
 
+**Concurrent IO (`ConcurrencyConfig.IoExecutor`)**: independent external reads run on one bounded pool (`alphamind.io.threads`, default 16): quote and K-lines in `MarketDataProviderChain`, article bodies in `StockNewsService` (cached by URL for 24h, failures not cached), and the news prefetch `PipelineOrchestrator` starts before stage 1 and hands to `SentimentAgent` via the `newsPrefetch` context key. Never run agent logic on this pool — agent context is `ThreadLocal`. The pool is deliberately registered under a non-`Executor` type: any `Executor` bean makes Spring Boot skip `applicationTaskExecutor`, which MVC async/SSE needs.
+
 **Chat routing (`AgentRouter`)**: messages starting with `@Market`, `@TechnicalAgent`, `@Bull`, … (case-insensitive, `Agent` suffix optional) are routed to that agent with the mention stripped. Unrecognized mentions and plain messages fall back to the caller's `agentType`, defaulting to `PORTFOLIO`.
 
 **Adding an agent**: ① extend `BaseAgent` (implement `analyze()`, `chat()`, `getSystemPrompt()`); ② add the `AgentType` value and wire it into `AgentRouter` (exhaustive switch — it will not compile otherwise); ③ hook it into `PipelineOrchestrator` or `DebateOrchestrator`, setting context before and clearing it after; ④ use `llmCall()` with a deterministic template fallback so the agent works without an API key.
@@ -243,6 +245,7 @@ Analysis reports persist through `AnalysisReportRepository` (JPA, jsonb columns 
 - Frontend strategy values are lowercase (`conservative`/`balanced`/`aggressive`); backend `StrategyTypeConverter` accepts case-insensitive input
 - Stock search uses query parameter `query`, not `keyword`; watchlist defaults `userId` to `default`
 - Frontend code should use relative `/api/v1/...` URLs; `frontend/next.config.ts` rewrites these to `BACKEND_API_ORIGIN` (default `http://localhost:8080`) — never hardcode the backend origin
+- ECharts is imported on demand through `src/utils/echarts.ts` (only the registered series/components are bundled); never `import * as echarts from "echarts"` — register new chart types there
 - Stack is Tailwind v4 + Radix primitives + lucide-react + ECharts + Zustand — not a component framework like Ant Design; SSE goes through `useSSE` (`EventSource`), and stores in `src/stores/` own their domain state and its SSE event handling
 - No mock data flows — the app is wired to real APIs; do not reintroduce mocks for analysis, chat, history, or watchlist
 - User-facing copy, prompts, and domain text are in Chinese — keep new UI strings consistent

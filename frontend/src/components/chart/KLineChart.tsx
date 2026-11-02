@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import * as echarts from "echarts";
+import { echarts, type ChartOption } from "@/utils/echarts";
 import type { KLineData } from "@/types";
 import { cn } from "@/utils";
 
@@ -29,7 +29,7 @@ export function KLineChart({ data, className }: KLineChartProps) {
     const bgColor = theme.getPropertyValue("--bg-secondary").trim();
     const borderColor = theme.getPropertyValue("--border").trim();
 
-    const option: echarts.EChartsOption = {
+    const option: ChartOption = {
       backgroundColor: "transparent",
       tooltip: {
         trigger: "axis",

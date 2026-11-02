@@ -6,6 +6,9 @@
 
 ### Added
 
+- 性能：行情报价与日 K 并发获取；新闻正文并发抓取并按链接缓存 24 小时（失败不缓存）；分析开始即在后台预取新闻与正文，与行情/技术阶段重叠，舆情阶段直接使用，预取失败时同步读取。外部 IO 统一使用有界线程池 `alphamind.io.threads`（默认 16）
+- 性能：前端 ECharts 改为按需引入（`src/utils/echarts.ts`，仅注册 K 线图用到的蜡烛图/折线/柱状图与提示框/图例/网格/内置缩放）；移除未使用的 `echarts-for-react`
+
 - 访问令牌门禁：`ApiTokenAuthConfig` 以 `ALPHAMIND_API_TOKEN` 门控 `/api/**`（未配置即关闭），支持 Bearer/X-API-Token/`?token=` 三种携带方式与常量时间比较，OPTIONS 放行，401 返回统一信封；前端 axios 自动附加请求头、SSE 走查询参数，Docker 构建期变量与 `.env.example` 同步
 - 对话页可访问性：消息列表 `role=log`/`aria-live`，输入框与发送按钮 `aria-label`，加载/错误态 `aria-live`/`role=alert`；消息正文与提示文本 `break-words`，长 URL 不再撑破气泡
 - 新闻正文摘录：`EastmoneyNewsProvider.fetchArticleBody` 解析东方财富文章页（仅限该域名、ContentBody/txtinfos、剔除脚本、500 字截断），`StockNewsService.articleBodiesByTitle` 批量获取前 3 篇（单篇失败跳过），舆情摘要 Prompt 附正文摘录、全部失败退回纯标题
