@@ -45,14 +45,29 @@ public class EastmoneyKlineMarketDataProvider implements MarketDataProvider {
         return "eastmoney";
     }
 
+    /** 沪深 300 指数（上交所代码 000300）；指数代码不能套用个股的市场映射规则。 */
+    public static final String CSI300_SECID = "1.000300";
+
     @Override
     public Optional<List<DailyKline>> fetchDailyKlines(String stockCode, int limit) {
-        if (!isAshareCode(stockCode) || limit <= 0) {
+        if (!isAshareCode(stockCode)) {
+            return Optional.empty();
+        }
+        return fetchBySecId(toEastmoneySecId(stockCode), limit);
+    }
+
+    /** 基准指数日 K（前复权参数对指数无影响）。 */
+    public Optional<List<DailyKline>> fetchBenchmarkKlines(int limit) {
+        return fetchBySecId(CSI300_SECID, limit);
+    }
+
+    private Optional<List<DailyKline>> fetchBySecId(String secId, int limit) {
+        if (limit <= 0) {
             return Optional.empty();
         }
         try {
             String url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
-                    + "?secid=" + toEastmoneySecId(stockCode)
+                    + "?secid=" + secId
                     + "&klt=101&fqt=1&lmt=" + limit + "&end=20500101"
                     + "&fields1=f1,f2,f3,f4,f5,f6"
                     + "&fields2=f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61";

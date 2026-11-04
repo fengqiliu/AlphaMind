@@ -43,12 +43,13 @@ public final class TechnicalReplay {
     }
 
     /** 主板 10%（阈值 9.5%）；创业板/科创板 20%（阈值 19.5%）。 */
-    static double limitUpThreshold(String code) {
+    public static double limitUpThreshold(String code) {
         return code.startsWith("300") || code.startsWith("301") || code.startsWith("688") || code.startsWith("689")
                 ? 0.195 : 0.095;
     }
 
-    private static boolean isLimitUpLocked(DailyKline bar, double previousClose, double threshold) {
+    /** 一字涨停（开=高=低=收且涨幅达到阈值）时视为无法买入；回测与信号账本共用。 */
+    public static boolean isLimitUpLocked(DailyKline bar, double previousClose, double threshold) {
         boolean oneWord = bar.open() == bar.high() && bar.high() == bar.low() && bar.low() == bar.close();
         return oneWord && bar.close() / previousClose - 1 >= threshold;
     }
