@@ -35,6 +35,7 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 - **技术分离线回测**：与线上同一评分实现、无前视回放，输出可复现的 Markdown 报告
 - 每周推荐 3 支“低位 + 价值”兼顾的重点观察股票，可一键带入分析
 - 行情、新闻、财报估值均为“新鲜缓存 → 真实数据源 → 带告警的过期缓存 → 明确失败”
+- 历史存档：每次真实抓到新闻、每次舆情计算都只增不改地写入数据库（`news_archive`、`sentiment_archive`），可选定时任务对股票池每日抓取，为日后舆情分的时间对齐回测积累数据
 - 外部数据并发获取：实时报价与日 K 同时请求，新闻正文并发抓取并按链接缓存 24 小时，分析开始即在后台预取新闻，与行情/技术阶段重叠
 - LLM 可选接入（多模型 + 熔断）；未配置 API Key 时自动降级为确定性模板输出
 - 分析报告持久化（PostgreSQL jsonb + Flyway），历史详情可完整还原并导出 JSON / Markdown / PDF
@@ -169,6 +170,9 @@ MARKET_CACHE_STALE_MAX_AGE_SECONDS=86400
 MARKET_HISTORY_DAYS=120
 # 外部数据并发请求的线程数（默认 16）
 ALPHAMIND_IO_THREADS=16
+
+# 新闻存档定时任务（默认关闭）：Spring cron，Asia/Shanghai 时区，例如收盘后每个交易日一次
+ALPHAMIND_ARCHIVE_CRON=
 
 # 前端 rewrite 目标（默认 http://localhost:8080）
 BACKEND_API_ORIGIN=http://localhost:8080

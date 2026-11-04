@@ -3,6 +3,7 @@ package com.alphamind.news.service;
 import com.alphamind.news.provider.EastmoneyNewsProvider;
 import com.alphamind.news.provider.NewsArticle;
 import lombok.extern.slf4j.Slf4j;
+import com.alphamind.archive.ArchiveService;
 import com.alphamind.config.ConcurrencyConfig;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,7 @@ public class StockNewsService {
     static final int BODY_CANDIDATE_FACTOR = 2;
 
     private final Executor executor;
+    private final ArchiveService archive;
     private final Map<String, CachedBody> bodyCache = new ConcurrentHashMap<>();
 
     public StockNewsService(EastmoneyNewsProvider newsProvider, NewsCacheService cacheService) {
@@ -45,14 +47,21 @@ public class StockNewsService {
 
     @Autowired
     public StockNewsService(EastmoneyNewsProvider newsProvider, NewsCacheService cacheService,
-                            ConcurrencyConfig.IoExecutor io) {
-        this(newsProvider, cacheService, io.executor());
+                            ConcurrencyConfig.IoExecutor io, ArchiveService archive) {
+        this(newsProvider, cacheService, io.executor(), archive);
     }
 
     public StockNewsService(EastmoneyNewsProvider newsProvider, NewsCacheService cacheService, Executor executor) {
+        this(newsProvider, cacheService, executor, null);
+    }
+
+    /** {@code archive} 可为空（测试）；有值时每次真实抓到新闻都会旁路存档。 */
+    public StockNewsService(EastmoneyNewsProvider newsProvider, NewsCacheService cacheService, Executor executor,
+                            ArchiveService archive) {
         this.newsProvider = newsProvider;
         this.cacheService = cacheService;
         this.executor = executor;
+        this.archive = archive;
     }
 
     /** 读取个股新闻；新闻源与缓存都不可用时返回 empty，绝不抛出。 */
@@ -68,12 +77,25 @@ public class StockNewsService {
                 .or(() -> fetchProviderOrStale(stockCode, limit));
     }
 
+    /** 只存档真实抓取的快照；缓存读取不重复存档。存档失败不影响新闻读取。 */
+    private void archiveQuietly(NewsSnapshot snapshot) {
+        if (archive == null) {
+            return;
+        }
+        try {
+            archive.archiveNews(snapshot);
+        } catch (RuntimeException e) {
+            log.warn("新闻存档异常（已忽略）: stockCode={}, reason={}", snapshot.stockCode(), e.getMessage());
+        }
+    }
+
     private Optional<NewsResolution> fetchProviderOrStale(String stockCode, int limit) {
         Optional<List<NewsArticle>> fetched = newsProvider.fetchNews(stockCode, limit);
         if (fetched.isPresent()) {
             NewsSnapshot snapshot = new NewsSnapshot(
                     stockCode, fetched.get(), newsProvider.sourceName(), Instant.now());
             cacheService.put(snapshot);
+            archiveQuietly(snapshot);
             return Optional.of(new NewsResolution(snapshot, NewsResolution.Status.LIVE, 0, null));
         }
 

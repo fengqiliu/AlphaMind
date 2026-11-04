@@ -165,4 +165,19 @@ class SentimentAgentTest {
 
         org.mockito.Mockito.verify(news).news("600519");
     }
+
+    @Test
+    void archivesSentimentInputsAfterAnalysis() {
+        var archive = org.mockito.Mockito.mock(com.alphamind.archive.ArchiveService.class);
+        var archiving = new SentimentAgent(news, archive);
+        try {
+            var market = market(20.0);
+            archiving.setContext("marketData", market);
+            var result = archiving.analyze(AnalysisReportDTO.builder().stockCode("600519").build()).getSentimentData();
+
+            org.mockito.Mockito.verify(archive).archiveSentiment("600519", market, result);
+        } finally {
+            archiving.clearContext();
+        }
+    }
 }

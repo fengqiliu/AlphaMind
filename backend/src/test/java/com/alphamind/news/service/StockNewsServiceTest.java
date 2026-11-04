@@ -10,8 +10,10 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -114,5 +116,35 @@ class StockNewsServiceTest {
         assertEquals(1, service.articleBodiesByTitle(List.of(first, second), 1, 500).size());
         assertTrue(service.articleBodiesByTitle(List.of(), 3, 500).isEmpty());
         assertTrue(service.articleBodiesByTitle(null, 3, 500).isEmpty());
+    }
+
+    @Test
+    void archivesOnlyLiveFetchesNotCacheReads() {
+        var archive = mock(com.alphamind.archive.ArchiveService.class);
+        var archiving = new StockNewsService(provider, cacheService, Runnable::run, archive);
+        when(cacheService.getFresh("600519")).thenReturn(Optional.empty());
+        when(provider.fetchNews("600519", 20)).thenReturn(Optional.of(List.of(new NewsArticle("标题", null, "http://x/1"))));
+        when(provider.sourceName()).thenReturn("eastmoney");
+
+        var live = archiving.news("600519").orElseThrow();
+
+        verify(archive).archiveNews(live.snapshot());
+
+        NewsSnapshot cached = new NewsSnapshot("000001", List.of(new NewsArticle("缓存", null, null)), "eastmoney", Instant.now());
+        when(cacheService.getFresh("000001")).thenReturn(Optional.of(new NewsCacheService.CacheHit(cached, 30)));
+        archiving.news("000001");
+        verify(archive, never()).archiveNews(cached);
+    }
+
+    @Test
+    void archiveFailureDoesNotBreakNewsRead() {
+        var archive = mock(com.alphamind.archive.ArchiveService.class);
+        doThrow(new IllegalStateException("db")).when(archive).archiveNews(any());
+        var archiving = new StockNewsService(provider, cacheService, Runnable::run, archive);
+        when(cacheService.getFresh("600519")).thenReturn(Optional.empty());
+        when(provider.fetchNews("600519", 20)).thenReturn(Optional.of(List.of(new NewsArticle("标题", null, null))));
+        when(provider.sourceName()).thenReturn("eastmoney");
+
+        assertTrue(archiving.news("600519").isPresent());
     }
 }

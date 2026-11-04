@@ -1,5 +1,6 @@
 package com.alphamind.agent;
 
+import com.alphamind.archive.ArchiveService;
 import com.alphamind.model.dto.*;
 import com.alphamind.model.enums.AgentType;
 import com.alphamind.news.service.HeadlineSentimentScorer;
@@ -30,10 +31,18 @@ public class SentimentAgent extends BaseAgent {
     public static final String NEWS_PREFETCH = "newsPrefetch";
 
     private final StockNewsService stockNewsService;
+    private final ArchiveService archive;
 
     public SentimentAgent(StockNewsService stockNewsService) {
+        this(stockNewsService, null);
+    }
+
+    /** {@code archive} 可为空（测试）；有值时每次舆情计算都会旁路存档输入与结果。 */
+    @org.springframework.beans.factory.annotation.Autowired
+    public SentimentAgent(StockNewsService stockNewsService, ArchiveService archive) {
         super(AgentType.SENTIMENT);
         this.stockNewsService = stockNewsService;
+        this.archive = archive;
     }
 
     /** 优先使用编排器预取的结果；没有预取或预取失败时同步读取。 */
@@ -82,6 +91,9 @@ public class SentimentAgent extends BaseAgent {
 
             report.setSentimentData(sentimentData);
             setContext("sentimentData", sentimentData);
+            if (archive != null) {
+                archive.archiveSentiment(report.getStockCode(), marketData, sentimentData);
+            }
 
             logInfo("舆情分析完成，情感评分: " + sentimentData.getSentimentScore());
             return report;
