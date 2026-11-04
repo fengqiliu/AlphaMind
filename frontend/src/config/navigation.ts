@@ -5,6 +5,7 @@ import {
   MessageSquare,
   Star,
   ShieldCheck,
+  Target,
 } from "lucide-react";
 
 export interface AppNavItem {
@@ -38,6 +39,12 @@ export const APP_NAV_ITEMS: AppNavItem[] = [
     label: "自选股",
     desc: "Watchlist",
     icon: Star,
+  },
+  {
+    href: "/performance",
+    label: "信号表现",
+    desc: "事后复盘",
+    icon: Target,
   },
   {
     href: "/history",

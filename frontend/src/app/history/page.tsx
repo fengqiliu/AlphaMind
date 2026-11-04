@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/common/Button";
 import { ReportDetail } from "@/components/analysis/ReportDetail";
+import { OutcomePanel } from "@/components/ledger/OutcomePanel";
 import { getAnalysisHistory, getAnalysisReport } from "@/api/client";
 import type { AnalysisReport } from "@/types";
 import { SignalType } from "@/types";
@@ -334,6 +335,7 @@ export default function HistoryPage() {
                   </Button>
                 </div>
                 <ReportDetail report={selectedReport} />
+                <OutcomePanel reportId={selectedReport.id} />
               </>
             )}
           </section>

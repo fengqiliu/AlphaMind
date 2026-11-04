@@ -32,7 +32,9 @@ export function Sidebar() {
       </div>
       <nav
         aria-label="主导航"
-        className="grid grid-cols-5 gap-1 px-3 pb-3 lg:block lg:space-y-1 lg:px-4"
+        className="grid gap-1 px-3 pb-3 lg:block lg:space-y-1 lg:px-4"
+        // 窄屏时一行放下全部入口：列数随导航项数变化，桌面端 lg:block 后不再生效
+        style={{ gridTemplateColumns: `repeat(${APP_NAV_ITEMS.length}, minmax(0, 1fr))` }}
       >
         {APP_NAV_ITEMS.map((item) => {
           const Icon = item.icon;
@@ -43,7 +45,7 @@ export function Sidebar() {
               href={item.href}
               aria-current={active ? "page" : undefined}
               className={cn(
-                "group flex flex-col items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-1 py-2.5 text-[11px] font-medium transition-colors sm:flex-row sm:gap-2 sm:text-xs lg:justify-start lg:gap-3 lg:px-4 lg:py-3 lg:text-sm",
+                "group flex flex-col items-center justify-center gap-1.5 whitespace-nowrap rounded-xl px-0.5 py-2.5 text-[11px] font-medium transition-colors sm:flex-row sm:gap-2 sm:text-xs lg:justify-start lg:gap-3 lg:px-4 lg:py-3 lg:text-sm",
                 active
                   ? "bg-[var(--accent-subtle)] text-[var(--accent)]"
                   : "text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)]",
