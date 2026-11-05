@@ -19,14 +19,10 @@ public class PersonalModelEngine {
         List<String> notes = new ArrayList<>();
         List<PersonalModelAssessment.Gate> gates = new ArrayList<>();
         Double price = market == null ? null : market.getCurrentPrice();
-        int tier = 0;
-        String zone = "UNKNOWN";
-        if (price == null || !Double.isFinite(price) || price <= 0) missing.add("可核实的最新价格");
-        else {
-            for (var band : asset.bands()) if (price >= band.low() && price <= band.high()) tier = Math.max(tier, band.tier());
-            zone = tier > 0 ? "TIER_" + tier : price > asset.bands().get(0).high() ? "ABOVE_FIRST"
-                    : price < asset.bands().get(2).low() ? "BELOW_THIRD" : "BETWEEN_BANDS";
-        }
+        var classified = PriceZones.classify(asset, price);
+        int tier = classified.tier();
+        String zone = classified.name();
+        if (PriceZones.UNKNOWN.equals(zone)) missing.add("可核实的最新价格");
         gates.add(gate("PRICE", "Gate 0 价格", tier > 0 ? "PASS" : "PENDING",
                 tier > 0 ? "进入第 " + tier + " 档，仅触发复核" : "ABOVE_FIRST".equals(zone) ? "尚未进入首档，不追价"
                         : "价格缺失、位于档间或跌破第三档：仅复核，不自动升档"));

@@ -19,6 +19,7 @@ import { AutoFundamentals } from "@/components/investment/AutoFundamentals";
 import { DraftNotice } from "@/components/investment/DraftNotice";
 import { EvidenceFields } from "@/components/investment/EvidenceFields";
 import { RiskBudgetSection } from "@/components/investment/RiskBudgetSection";
+import { PriceAlertPanel } from "@/components/investment/PriceAlertPanel";
 import {
   inputStyle,
   labelStyle,
@@ -119,6 +120,22 @@ export default function InvestmentModelPage() {
       if (request === draftRequest.current) setDraftLoading(false);
     }
   };
+  const selectStock = (code: string) => {
+    setStockCode(code);
+    setReview({});
+    setReport(null);
+    setError(null);
+    draftRequest.current++;
+    setDraft(null);
+    setDraftMessage(null);
+    setDraftLoading(false);
+  };
+  const reviewFromAlert = (code: string) => {
+    if (code !== stockCode) selectStock(code);
+    document
+      .getElementById("review-form")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const set: ReviewSetter = (key, value) =>
     setReview((previous) => ({ ...previous, [key]: value }));
   const analyze = async (event: React.FormEvent) => {
@@ -202,7 +219,12 @@ export default function InvestmentModelPage() {
               S3/S4。文档旧持仓不作为实时账户。
             </p>
           </section>
-          <form onSubmit={(event) => void analyze(event)} className="space-y-5">
+          <PriceAlertPanel onReview={reviewFromAlert} />
+          <form
+            id="review-form"
+            onSubmit={(event) => void analyze(event)}
+            className="space-y-5"
+          >
             <fieldset
               disabled={loading || draftLoading}
               className="space-y-5 disabled:opacity-70"
@@ -213,16 +235,7 @@ export default function InvestmentModelPage() {
                   <select
                     aria-label="观察标的"
                     value={stockCode}
-                    onChange={(event) => {
-                      setStockCode(event.target.value);
-                      setReview({});
-                      setReport(null);
-                      setError(null);
-                      draftRequest.current++;
-                      setDraft(null);
-                      setDraftMessage(null);
-                      setDraftLoading(false);
-                    }}
+                    onChange={(event) => selectStock(event.target.value)}
                     className={inputStyle}
                   >
                     {!stockCode && (
@@ -299,7 +312,7 @@ export default function InvestmentModelPage() {
           )}
           <footer className="border-t border-[var(--border)] pt-4 text-xs leading-6 text-[var(--text-muted)]">
             规则来源：{model.sourceFile}
-            。原文件保持不变。没有自动下单或自动提醒；每次复核以最新证据和组合数据为准。
+            。原文件保持不变。没有自动下单；价格提醒只提示复核，每次复核以最新证据和组合数据为准。
           </footer>
         </>
       )}
