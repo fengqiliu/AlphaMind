@@ -1,3 +1,4 @@
+import type { RiskBudget } from "@/types/portfolio";
 export type Decision = "UNKNOWN" | "PASS" | "FAIL";
 export type Valuation = "UNKNOWN" | "REASONABLE" | "UNDERVALUED" | "OVERVALUED";
 export interface PersonalAsset {
@@ -43,6 +44,8 @@ export interface PersonalModelReview {
   cashAfterTradePct?: number | null;
   portfolioDrawdownPct?: number | null;
   goldPositionLimitPct?: number | null;
+  /** 由"我的持仓"推算时冻结的组合快照；手动填写时为空。 */
+  portfolioBasis?: RiskBudget | null;
 }
 export interface PersonalReviewDraft {
   sourceReportId: string;

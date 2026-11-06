@@ -20,6 +20,7 @@ import { DraftNotice } from "@/components/investment/DraftNotice";
 import { EvidenceFields } from "@/components/investment/EvidenceFields";
 import { RiskBudgetSection } from "@/components/investment/RiskBudgetSection";
 import { PriceAlertPanel } from "@/components/investment/PriceAlertPanel";
+import { PortfolioEditor } from "@/components/investment/PortfolioEditor";
 import {
   inputStyle,
   labelStyle,
@@ -220,6 +221,7 @@ export default function InvestmentModelPage() {
             </p>
           </section>
           <PriceAlertPanel onReview={reviewFromAlert} />
+          <PortfolioEditor assets={model.assets} />
           <form
             id="review-form"
             onSubmit={(event) => void analyze(event)}

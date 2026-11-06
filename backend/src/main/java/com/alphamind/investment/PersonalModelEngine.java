@@ -116,10 +116,23 @@ public class PersonalModelEngine {
         }
         notes.add("价格区间来自 " + model.versionDate() + " 的 v" + model.version() + "，应随财报复核，不能视为当前合理价值。");
         notes.add("试仓 10%–20%、主建仓/强化各 25%–35%、机动 20%–30% 是单标的目标仓位内部示例，不是总资产比例。");
-        notes.add("风险数值为人工输入的交易后合并敞口；不使用文档旧持仓推测当前账户，不生成固定止损价或收益目标。");
+        notes.add(portfolioNote(review, asset.code()));
         if (asset.provisional()) notes.add("博通集成三档为暂定，额外确认扣非、现金流、库存、产品收入与估值回落后才可升级。");
         return new PersonalModelAssessment(model.id(), model.version(), model.versionDate(), model.sourceSha256(), asset,
                 level, action, candidate, zone, price, gates, timing, List.copyOf(missing), List.copyOf(blocks), notes, review, today, null);
+    }
+    /** 说明 Gate 5 数值来源；表单数值与冻结的持仓推算不一致时如实写明，以表单为准。 */
+    static String portfolioNote(PersonalModelReview review, String code) {
+        var basis = review.getPortfolioBasis();
+        if (basis == null) return "风险数值为人工输入的交易后合并敞口；不使用文档旧持仓推测当前账户，不生成固定止损价或收益目标。";
+        if (!code.equals(basis.stockCode()) || !basis.complete()) return "附带的持仓推算与本标的不符或不完整，风险数值按人工输入处理。";
+        boolean same = Objects.equals(basis.projectedPositionPct(), review.getProjectedPositionPct())
+                && Objects.equals(basis.projectedThemePct(), review.getProjectedThemePct())
+                && Objects.equals(basis.cashAfterTradePct(), review.getCashAfterTradePct())
+                && Objects.equals(basis.portfolioDrawdownPct(), review.getPortfolioDrawdownPct());
+        String source = "风险数值由 " + basis.computedAt().toLocalDateTime().withNano(0) + " 的持仓快照推算（总资产 "
+                + basis.totalValue() + " 元，拟买入 " + basis.plannedBuyAmount() + " 元，" + basis.valuations().size() + " 条持仓）";
+        return same ? source + "；不生成固定止损价或收益目标。" : source + "，但表单数值已被手动修改，以表单为准。";
     }
     private static PersonalModelAssessment.Gate gate(String id, String label, String status, String detail) { return new PersonalModelAssessment.Gate(id,label,status,detail); }
     private static String status(boolean pass, boolean fail) { return fail ? "FAIL" : pass ? "PASS" : "PENDING"; }

@@ -1,6 +1,7 @@
 package com.alphamind.investment;
 
 import jakarta.validation.constraints.*;
+import com.alphamind.portfolio.RiskBudget;
 import lombok.Data;
 
 import java.time.LocalDate;
@@ -32,4 +33,6 @@ public class PersonalModelReview {
     @DecimalMin("0") @DecimalMax("100") private Double cashAfterTradePct;
     @DecimalMin("0") @DecimalMax("100") private Double portfolioDrawdownPct;
     @DecimalMin("0.01") @DecimalMax("100") private Double goldPositionLimitPct;
+    /** 由"我的持仓"推算 Gate 5 时冻结的组合快照；手动填写时为 null。只用于说明数值来源，不参与门判定。 */
+    private RiskBudget portfolioBasis;
 }
