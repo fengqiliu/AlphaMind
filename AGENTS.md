@@ -192,7 +192,8 @@ Report `strategy` and `mode` contain actual execution enum names. Legacy reports
 - `chat/` - Chat interface
 - `history/` - Analysis history
 - `watchlist/` - Watchlist management
-- `investment-model/` - Personal v1.1 decision gates, evidence review and risk budget
+- `investment-model/` - Personal v1.1 decision gates, evidence review and risk budget; price-alert panel, "我的持仓" editor, portfolio-based Gate 5 fill
+- `performance/` - Signal ledger performance by group
 
 **Components** (`frontend/src/components/`):
 
@@ -200,6 +201,8 @@ Report `strategy` and `mode` contain actual execution enum names. Legacy reports
 - `analysis/` - Analysis and debate result display
 - `chart/` - K-line and technical indicator charts (ECharts)
 - `common/` - Shared UI components (Button, StockSearch, ConfidenceBar)
+- `investment/` - Personal-model page sections (evidence, fundamentals, risk budget, `PriceAlertPanel`, `PortfolioEditor`)
+- `ledger/` - `OutcomePanel` for history detail and shared formatting
 
 **State Management** (`frontend/src/stores/`):
 
@@ -224,6 +227,8 @@ Events: `stage`, `data` (carries `agentType` + payload), `result` (an `ApiRespon
 Report lookup: `GET /api/v1/analysis/{reportId}`. History detail links use `/history?report={reportId}` and are independent of the recent-list limit. Also `POST /api/v1/analysis/analyze` (synchronous) and `GET /api/v1/analysis/history?stockCode=&limit=`.
 
 Personal model: `GET /api/v1/investment-model`, `POST /api/v1/investment-model/analyze` with `{stockCode, review?}`. This dedicated deterministic use case does not call LLMs or trade APIs. Unknown/expired evidence never passes; do not use document holdings as current account data. Personal reports have nullable forecast/holding/confidence fields and render/export through `personalModel`, not the generic trade-plan cards. See `docs/个人投资模型接入说明.md` for source fidelity and conservative interpretations.
+
+Fundamentals preview: `GET /api/v1/investment-model/fundamentals/{stockCode}` (400 outside the model, 503 when unavailable). Price alerts: `GET /api/v1/investment-model/alerts?includeAcknowledged=`, `GET /alerts/unread-count`, `POST /alerts/{id}/ack`, `POST /alerts/check` (409 while running). Portfolio: `GET /api/v1/portfolio` (404 when not entered), `PUT /api/v1/portfolio`, `POST /api/v1/portfolio/risk-budget` with `{stockCode, plannedBuyAmount}`. Signal ledger: `GET /api/v1/signals/performance`, `GET /api/v1/signals/outcomes/{reportId}`, `POST /api/v1/signals/evaluate` (409 while running).
 
 Review reuse: `GET /api/v1/investment-model/reviews/{stockCode}/latest` derives a draft from the latest sourced personal report. Preserve source dates, reset current valuation/logic/timing/leverage/portfolio decisions, and never mutate the source report. Validate `review.sourceReportId` against stock and model version before fetching market data. V4 adds a matching partial lookup index.
 

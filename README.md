@@ -48,15 +48,16 @@ AlphaMind 由一组专职 Agent 共同完成股票分析：
 
 ## 当前状态
 
-截至 2026-11-02：
+截至 2026-11-06：
 
-- 后端 `mvn test` 198 个离线单元测试全部通过（无 Spring 上下文、无数据库、无网络）
+- 后端 `mvn test` 249 个离线单元测试全部通过（无 Spring 上下文、无数据库、无网络）
 - 技术分、舆情分、综合分与规则一致度口径统一，评分依据、分项和数据缺口随报告保存并在页面、导出中展示
-- 个人投资模型 v1.1 已接入，自动财报与估值快照随复核报告冻结保存
+- 个人投资模型 v1.1 已接入，自动财报与估值快照随复核报告冻结保存；价格进档站内提醒；手动维护的持仓可推算 Gate 5 交易后权重
 - 已有共享令牌门禁（单用户访问控制）；多用户账户与数据隔离尚未实现
 - 依赖已升级到 Spring Boot 3.5.16 / Spring AI 1.1.8、Next.js 16.4.3 / React 19.3，前端生产依赖安全审计 0 漏洞
 - 技术规则 V1 已完成首次历史回测：72 只观察股约 5 年、样本外持有 10 日，**未见区分力**（≥70 分档超额收益不高于 <40 分档，IC 未达显著）。新报告的技术评分说明和每条交易信号理由都会如实注明这一结论；综合分权重与 70/50 阈值暂未调整
-- 舆情分依赖新闻，无法做时间对齐的历史回测；综合信号整体未经验证，仅作规则参考
+- 舆情分依赖新闻，过去的数据无法做时间对齐回测；新闻与舆情输入已开始只增不改存档，积累数月后可回测；综合信号整体未经验证，仅作规则参考
+- 信号账本已上线：报告到期后自动记录 5/10/20 日结果与相对沪深 300 超额，样本仍在积累
 
 详细变更记录见 [`changelog.md`](./changelog.md)，设计说明见 [`docs/`](./docs)。
 
@@ -98,14 +99,17 @@ AlphaMind/
 ├── backend/
 │   ├── src/main/java/com/alphamind/
 │   │   ├── agent/          # BaseAgent + 8 个专职 Agent、AgentRouter
+│   │   ├── archive/        # 新闻与舆情输入只增不改存档、定时抓取
 │   │   ├── backtest/       # 技术分离线回测（回放、统计、报告）
 │   │   ├── config/         # Spring / AI / CORS / Converter 配置
-│   │   ├── controller/     # 分析、聊天、股票、个人投资模型、管理接口
+│   │   ├── controller/     # 分析、聊天、股票、个人投资模型、提醒、组合、信号账本、管理接口
 │   │   ├── fundamental/    # 财报与估值数据源、缓存与中性提示
-│   │   ├── investment/     # 个人投资模型目录、决策门引擎、复核复用
+│   │   ├── investment/     # 个人投资模型目录、决策门引擎、档位判定、复核复用；alert/ 价格提醒
+│   │   ├── ledger/         # 信号账本：到期结果计算、分组表现、定时补算
 │   │   ├── market/         # 行情 Provider 链与缓存降级
 │   │   ├── model/          # DTO / 枚举 / 实体（含 jsonb Entity）
 │   │   ├── news/           # 个股新闻数据源与缓存
+│   │   ├── portfolio/      # 手动维护的当前组合与 Gate 5 推算
 │   │   ├── repository/     # JPA 仓库
 │   │   ├── scoring/        # TechnicalScoring、规则一致度、辩论证据
 │   │   ├── service/        # 编排器、分析/历史/对话服务、记忆、LLM 管理、Prompt 版本
@@ -116,7 +120,7 @@ AlphaMind/
 │   └── pom.xml
 ├── frontend/
 │   ├── src/
-│   │   ├── app/            # 页面：/ chat/ history/ watchlist/ investment-model/
+│   │   ├── app/            # 页面：/ chat/ history/ watchlist/ investment-model/ performance/
 │   │   ├── api/            # Axios API 客户端
 │   │   ├── components/     # UI 组件（analysis/ chart/ common/ agent/ investment/ …）
 │   │   ├── hooks/          # useSSE、useAnalysisSession、useFundamentals 等
@@ -345,6 +349,26 @@ GET  /api/v1/investment-model                              # 模型定义、版�
 POST /api/v1/investment-model/analyze                      # { stockCode, review? }：真实行情 + 确定性复核并保存报告
 GET  /api/v1/investment-model/reviews/{stockCode}/latest   # 最近一次有来源复核的安全草稿
 GET  /api/v1/investment-model/fundamentals/{stockCode}     # 财报/估值快照；模型外标的 400，不可用 503
+GET  /api/v1/investment-model/alerts?includeAcknowledged=false  # 最近 50 条价格提醒（默认只含未读）
+GET  /api/v1/investment-model/alerts/unread-count          # 未读提醒数
+POST /api/v1/investment-model/alerts/{id}/ack              # 标为已读
+POST /api/v1/investment-model/alerts/check                 # 立即检查档位；上一轮未结束 409
+```
+
+### 组合接口
+
+```http
+GET  /api/v1/portfolio                # 当前组合；未录入 404
+PUT  /api/v1/portfolio                # 整体覆盖保存；无法估值或代码重复 400
+POST /api/v1/portfolio/risk-budget    # { stockCode, plannedBuyAmount }：推算交易后 Gate 5 四项
+```
+
+### 信号账本接口
+
+```http
+GET  /api/v1/signals/performance           # 分组事后表现
+GET  /api/v1/signals/outcomes/{reportId}   # 单份报告的 5/10/20 日结果
+POST /api/v1/signals/evaluate              # 立即补算；上一轮未结束 409
 ```
 
 ### 管理接口
@@ -368,7 +392,7 @@ Actuator 仅暴露 `/actuator/health`、`/info`、`/metrics`。
 | 路由                | 功能                                                                                                                                    |
 | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | `/`                 | 主分析页：每周低位价值股、股票搜索、个股资讯、策略/模式选择、SSE 实时进度、行情、K 线、技术指标与评分依据、舆情分析、交易信号、辩论结果 |
-| `/investment-model` | 个人投资模型复核：标的三档价格、自动财报与估值参考、人工证据表单、载入上次复核、复核结果与导出                                          |
+| `/investment-model` | 个人投资模型复核：标的三档价格、自动财报与估值参考、人工证据表单、载入上次复核、价格提醒、我的持仓与 Gate 5 推算、复核结果与导出                                          |
 | `/chat`             | 对话页：选择 Agent 或 @ 提及，流式聊天                                                                                                  |
 | `/performance`      | 信号表现：各类信号事后的平均超额收益、胜率与样本数，样本不足时明确标注                                                                     |
 | `/history`          | 历史记录：按股票筛选、完整报告详情、三方依据展开、JSON / Markdown / PDF 导出                                                            |
