@@ -36,7 +36,7 @@ class PortfolioServiceTest {
         when(catalog.definition()).thenReturn(new PersonalModelDefinition("m", "n", "1.1", "d", "f", "s", "p", List.of(asset)));
         when(catalog.asset("600036")).thenReturn(asset);
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        service = new PortfolioService(repository, catalog, market, io);
+        service = new PortfolioService(repository, catalog, market, io, mock(com.alphamind.service.AnalysisHistoryService.class));
     }
 
     @AfterEach

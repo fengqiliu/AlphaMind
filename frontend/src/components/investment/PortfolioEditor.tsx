@@ -19,7 +19,14 @@ const emptyHolding = (): Holding => ({
 const toNumber = (value: string) => (value === "" ? null : Number(value));
 
 /** "我的持仓"：手动维护当前组合，用于推算 Gate 5 的交易后权重。不对接券商。 */
-export function PortfolioEditor({ assets }: { assets: PersonalAsset[] }) {
+export function PortfolioEditor({
+  assets,
+  onSaved,
+}: {
+  assets: PersonalAsset[];
+  /** 保存成功后通知，用于刷新持仓体检。 */
+  onSaved?: () => void;
+}) {
   const [profile, setProfile] = useState<PortfolioProfile | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -69,6 +76,7 @@ export function PortfolioEditor({ assets }: { assets: PersonalAsset[] }) {
       const saved = await savePortfolio(profile);
       setProfile(saved);
       setMessage("已保存。复核时可在风险预算中按持仓推算。");
+      onSaved?.();
     } catch (failure) {
       setMessage(failure instanceof Error ? failure.message : "持仓保存失败");
     } finally {

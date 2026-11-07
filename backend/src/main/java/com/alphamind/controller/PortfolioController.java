@@ -1,6 +1,7 @@
 package com.alphamind.controller;
 
 import com.alphamind.model.dto.ApiResponse;
+import com.alphamind.portfolio.PortfolioHealth;
 import com.alphamind.portfolio.PortfolioProfile;
 import com.alphamind.portfolio.PortfolioService;
 import com.alphamind.portfolio.RiskBudget;
@@ -30,6 +31,12 @@ public class PortfolioController {
     public ApiResponse<PortfolioProfile> save(@Valid @RequestBody PortfolioProfile profile) {
         try { return ApiResponse.success(service.save(profile)); }
         catch (IllegalArgumentException failure) { return ApiResponse.error(400, failure.getMessage()); }
+    }
+
+    /** 持仓体检：越线、过热与证据过期提示，只读。 */
+    @GetMapping("/health")
+    public ApiResponse<PortfolioHealth> health() {
+        return service.health().map(ApiResponse::success).orElseGet(() -> ApiResponse.error(404, "尚未录入持仓"));
     }
 
     @PostMapping("/risk-budget")

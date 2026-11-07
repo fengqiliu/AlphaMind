@@ -42,3 +42,29 @@ export interface RiskBudget {
   problems: string[];
   computedAt: string;
 }
+
+export type HealthKind =
+  | "POSITION_LIMIT"
+  | "THEME_LIMIT"
+  | "CASH_FLOOR"
+  | "DRAWDOWN"
+  | "OVERHEATED"
+  | "REVIEW_MISSING"
+  | "REVIEW_EXPIRED";
+
+export interface HealthFinding {
+  kind: HealthKind;
+  stockCode: string | null;
+  name: string;
+  message: string;
+  value: number | null;
+  limit: number | null;
+}
+
+/** 持仓体检；totalValue 为 null 表示有持仓缺当期行情，组合权重未检查。 */
+export interface PortfolioHealth {
+  totalValue: number | null;
+  findings: HealthFinding[];
+  unavailable: string[];
+  checkedAt: string;
+}

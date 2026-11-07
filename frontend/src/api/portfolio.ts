@@ -1,5 +1,5 @@
 import api from "@/api/client";
-import type { PortfolioProfile, RiskBudget } from "@/types/portfolio";
+import type { PortfolioHealth, PortfolioProfile, RiskBudget } from "@/types/portfolio";
 
 /** 尚未录入时返回 null。 */
 export const getPortfolio = async (): Promise<PortfolioProfile | null> => {
@@ -25,5 +25,13 @@ export const computeRiskBudget = async (
     { timeout: 120000 },
   );
   if (data.code !== 200 || !data.data) throw new Error(data.message || "组合推算失败");
+  return data.data;
+};
+
+/** 尚未录入持仓时返回 null。 */
+export const getPortfolioHealth = async (): Promise<PortfolioHealth | null> => {
+  const { data } = await api.get("/portfolio/health", { timeout: 120000 });
+  if (data.code === 404) return null;
+  if (data.code !== 200 || !data.data) throw new Error(data.message || "持仓体检失败");
   return data.data;
 };

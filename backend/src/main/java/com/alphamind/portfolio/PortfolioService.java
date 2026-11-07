@@ -2,12 +2,16 @@ package com.alphamind.portfolio;
 
 import com.alphamind.config.ConcurrencyConfig;
 import com.alphamind.investment.PersonalModelCatalog;
+import com.alphamind.investment.PersonalTimingCalculator;
+import com.alphamind.market.service.MarketDataMapper;
+import com.alphamind.service.AnalysisHistoryService;
 import com.alphamind.market.service.MarketDataResolution;
 import com.alphamind.market.service.ResilientMarketDataService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.*;
@@ -23,13 +27,16 @@ public class PortfolioService {
     private final PersonalModelCatalog catalog;
     private final ResilientMarketDataService marketData;
     private final ConcurrencyConfig.IoExecutor io;
+    private final AnalysisHistoryService history;
 
     public PortfolioService(PortfolioRepository repository, PersonalModelCatalog catalog,
-                            ResilientMarketDataService marketData, ConcurrencyConfig.IoExecutor io) {
+                            ResilientMarketDataService marketData, ConcurrencyConfig.IoExecutor io,
+                            AnalysisHistoryService history) {
         this.repository = repository;
         this.catalog = catalog;
         this.marketData = marketData;
         this.io = io;
+        this.history = history;
     }
 
     public Optional<PortfolioProfile> get() {
@@ -79,6 +86,54 @@ public class PortfolioService {
             repository.save(entity.get());
         }
         return Optional.of(budget);
+    }
+
+    /** 持仓体检（只读）：组合尚未录入时返回 empty。 */
+    public Optional<PortfolioHealth> health() {
+        var profile = get();
+        if (profile.isEmpty()) return Optional.empty();
+        var assets = catalog.definition().assets();
+        LocalDate today = LocalDate.now(MARKET_ZONE);
+        Map<String, CompletableFuture<PortfolioHealthCalculator.HoldingQuote>> futures = new LinkedHashMap<>();
+        Map<String, PortfolioHealthCalculator.ReviewStatus> reviews = new HashMap<>();
+        for (Holding holding : profile.get().holdings()) {
+            if (holding.pricedByMarket()) {
+                futures.put(holding.stockCode(), CompletableFuture.supplyAsync(() -> healthQuote(holding, today), io.executor()));
+            }
+            if (holding.stockCode() != null && assets.stream().anyMatch(asset -> asset.code().equals(holding.stockCode()))) {
+                reviewStatus(holding.stockCode()).ifPresent(status -> reviews.put(holding.stockCode(), status));
+            }
+        }
+        Map<String, PortfolioHealthCalculator.HoldingQuote> quotes = new HashMap<>();
+        futures.forEach((code, future) -> quotes.put(code, future.join()));
+        return Optional.of(PortfolioHealthCalculator.evaluate(profile.get(), assets, quotes, reviews, today,
+                OffsetDateTime.now(MARKET_ZONE)));
+    }
+
+    private Optional<PortfolioHealthCalculator.ReviewStatus> reviewStatus(String code) {
+        try {
+            return history.getLatestPersonalReview(code)
+                    .filter(report -> report.getPersonalModel() != null && report.getPersonalModel().evidence() != null)
+                    .map(report -> new PortfolioHealthCalculator.ReviewStatus(report.getPersonalModel().evidence().getValidUntil()));
+        } catch (RuntimeException e) {
+            // 读取失败按"没有有效复核"提示，宁可多提醒一次复核，也不当作证据有效。
+            log.warn("读取最近复核失败: stockCode={}", code, e);
+            return Optional.empty();
+        }
+    }
+
+    private PortfolioHealthCalculator.HoldingQuote healthQuote(Holding holding, LocalDate today) {
+        try {
+            MarketDataResolution resolution = marketData.fetch(holding.stockCode(), holding.name());
+            if (resolution.status() == MarketDataResolution.Status.STALE_CACHE) {
+                return PortfolioHealthCalculator.HoldingQuote.failed("实时行情不可用，只有过期缓存");
+            }
+            Double rsi = PersonalTimingCalculator.calculate(MarketDataMapper.toDTO(resolution), today).dailyRsi14();
+            return PortfolioHealthCalculator.HoldingQuote.of(resolution.snapshot().quote().current(), rsi);
+        } catch (RuntimeException e) {
+            log.warn("持仓体检取数失败: stockCode={}, reason={}", holding.stockCode(), e.getMessage());
+            return PortfolioHealthCalculator.HoldingQuote.failed("行情取数失败");
+        }
     }
 
     private Map<String, RiskBudgetCalculator.Quote> quotes(List<Holding> holdings) {

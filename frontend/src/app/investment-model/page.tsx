@@ -21,6 +21,7 @@ import { EvidenceFields } from "@/components/investment/EvidenceFields";
 import { RiskBudgetSection } from "@/components/investment/RiskBudgetSection";
 import { PriceAlertPanel } from "@/components/investment/PriceAlertPanel";
 import { PortfolioEditor } from "@/components/investment/PortfolioEditor";
+import { PortfolioHealthPanel } from "@/components/investment/PortfolioHealthPanel";
 import {
   inputStyle,
   labelStyle,
@@ -35,6 +36,7 @@ export default function InvestmentModelPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [portfolioVersion, setPortfolioVersion] = useState(0);
   const [draft, setDraft] = useState<PersonalReviewDraft | null>(null);
   const [draftLoading, setDraftLoading] = useState(false);
   const [draftMessage, setDraftMessage] = useState<string | null>(null);
@@ -221,7 +223,15 @@ export default function InvestmentModelPage() {
             </p>
           </section>
           <PriceAlertPanel onReview={reviewFromAlert} />
-          <PortfolioEditor assets={model.assets} />
+          <PortfolioHealthPanel
+            refreshKey={portfolioVersion}
+            assetCodes={model.assets.map((item) => item.code)}
+            onReview={reviewFromAlert}
+          />
+          <PortfolioEditor
+            assets={model.assets}
+            onSaved={() => setPortfolioVersion((n) => n + 1)}
+          />
           <form
             id="review-form"
             onSubmit={(event) => void analyze(event)}
