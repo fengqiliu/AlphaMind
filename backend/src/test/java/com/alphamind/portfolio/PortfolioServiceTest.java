@@ -25,6 +25,7 @@ import static org.mockito.Mockito.*;
 class PortfolioServiceTest {
     private final PortfolioRepository repository = mock(PortfolioRepository.class);
     private final ResilientMarketDataService market = mock(ResilientMarketDataService.class);
+    private final PortfolioSnapshotRepository snapshots = mock(PortfolioSnapshotRepository.class);
     private final ConcurrencyConfig.IoExecutor io = new ConcurrencyConfig.IoExecutor(Executors.newFixedThreadPool(2));
     private PortfolioService service;
 
@@ -36,7 +37,7 @@ class PortfolioServiceTest {
         when(catalog.definition()).thenReturn(new PersonalModelDefinition("m", "n", "1.1", "d", "f", "s", "p", List.of(asset)));
         when(catalog.asset("600036")).thenReturn(asset);
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        service = new PortfolioService(repository, catalog, market, io, mock(com.alphamind.service.AnalysisHistoryService.class));
+        service = new PortfolioService(repository, catalog, market, io, mock(com.alphamind.service.AnalysisHistoryService.class), snapshots);
     }
 
     @AfterEach
@@ -94,6 +95,66 @@ class PortfolioServiceTest {
         assertFalse(budget.complete());
         assertEquals(15_000.0, entity.getPeakValue());
         verify(repository, never()).save(any());
+    }
+
+    private void liveQuoteAt38() {
+        var quote = new MarketQuote("600036", "招商银行", 38, 38, 38, 38, 38, 1, 38, LocalDateTime.now());
+        when(market.fetch("600036", "招商银行")).thenReturn(new MarketDataResolution(
+                new MarketDataSnapshot("600036", "招商银行", quote, List.of(), "f", "f", Instant.now()),
+                MarketDataResolution.Status.LIVE, 0, null));
+    }
+
+    @Test
+    void snapshotHighBeatsManualPeakForDrawdownWithoutRewritingIt() {
+        var entity = new PortfolioEntity(PortfolioEntity.SINGLETON_ID,
+                List.of(new Holding("600036", "招商银行", "银行", 1000.0, null)), 10_000, 0, 15_000.0, null);
+        when(repository.findById(PortfolioEntity.SINGLETON_ID)).thenReturn(Optional.of(entity));
+        when(snapshots.maxTotalValue()).thenReturn(60_000.0);
+        liveQuoteAt38();
+
+        var budget = service.riskBudget("600036", 0).orElseThrow();
+
+        assertEquals(60_000.0, budget.peakValue());
+        assertEquals(20.0, budget.portfolioDrawdownPct());
+        assertEquals(48_000.0, entity.getPeakValue(), "只按本次总资产抬高手填高点，不写入快照高点");
+    }
+
+    @Test
+    void snapshotHighIsUsedWhenNoManualPeakWasEntered() {
+        var entity = new PortfolioEntity(PortfolioEntity.SINGLETON_ID,
+                List.of(new Holding("600036", "招商银行", "银行", 1000.0, null)), 10_000, 0, null, null);
+        when(repository.findById(PortfolioEntity.SINGLETON_ID)).thenReturn(Optional.of(entity));
+        when(snapshots.maxTotalValue()).thenReturn(60_000.0);
+        liveQuoteAt38();
+
+        var budget = service.riskBudget("600036", 0).orElseThrow();
+
+        assertEquals(20.0, budget.portfolioDrawdownPct());
+        assertNull(entity.getPeakValue());
+    }
+
+    @Test
+    void noSnapshotsLeavesManualPeakAsIs() {
+        var entity = new PortfolioEntity(PortfolioEntity.SINGLETON_ID,
+                List.of(new Holding("600036", "招商银行", "银行", 1000.0, null)), 10_000, 0, 60_000.0, null);
+        when(repository.findById(PortfolioEntity.SINGLETON_ID)).thenReturn(Optional.of(entity));
+        when(snapshots.maxTotalValue()).thenReturn(null);
+        liveQuoteAt38();
+
+        assertEquals(20.0, service.riskBudget("600036", 0).orElseThrow().portfolioDrawdownPct());
+    }
+
+    @Test
+    void valuationIsWithheldWhenAHoldingHasOnlyStaleCache() {
+        var quote = new MarketQuote("600036", "招商银行", 38, 38, 38, 38, 38, 1, 38, LocalDateTime.now());
+        when(market.fetch("600036", "招商银行")).thenReturn(new MarketDataResolution(
+                new MarketDataSnapshot("600036", "招商银行", quote, List.of(), "f", "f", Instant.now()),
+                MarketDataResolution.Status.STALE_CACHE, 900, "w"));
+
+        var valuation = service.valuation(input(null, new Holding("600036", "招商银行", "银行", 1000.0, null)));
+
+        assertNull(valuation.totalValue());
+        assertFalse(valuation.problems().isEmpty());
     }
 
     @Test

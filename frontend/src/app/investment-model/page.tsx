@@ -22,6 +22,7 @@ import { RiskBudgetSection } from "@/components/investment/RiskBudgetSection";
 import { PriceAlertPanel } from "@/components/investment/PriceAlertPanel";
 import { PortfolioEditor } from "@/components/investment/PortfolioEditor";
 import { PortfolioHealthPanel } from "@/components/investment/PortfolioHealthPanel";
+import { PortfolioSnapshotPanel } from "@/components/investment/PortfolioSnapshotPanel";
 import {
   inputStyle,
   labelStyle,
@@ -228,6 +229,7 @@ export default function InvestmentModelPage() {
             assetCodes={model.assets.map((item) => item.code)}
             onReview={reviewFromAlert}
           />
+          <PortfolioSnapshotPanel />
           <PortfolioEditor
             assets={model.assets}
             onSaved={() => setPortfolioVersion((n) => n + 1)}

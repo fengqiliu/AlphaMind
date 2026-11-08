@@ -68,3 +68,12 @@ export interface PortfolioHealth {
   unavailable: string[];
   checkedAt: string;
 }
+
+/** 某个交易日收盘后的组合总资产；drawdownPct 相对此前最高快照。 */
+export interface PortfolioSnapshotPoint {
+  date: string;
+  totalValue: number;
+  cashRatioPct: number;
+  holdingsCount: number;
+  drawdownPct: number;
+}

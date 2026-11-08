@@ -1,5 +1,10 @@
 import api from "@/api/client";
-import type { PortfolioHealth, PortfolioProfile, RiskBudget } from "@/types/portfolio";
+import type {
+  PortfolioHealth,
+  PortfolioProfile,
+  PortfolioSnapshotPoint,
+  RiskBudget,
+} from "@/types/portfolio";
 
 /** 尚未录入时返回 null。 */
 export const getPortfolio = async (): Promise<PortfolioProfile | null> => {
@@ -33,5 +38,12 @@ export const getPortfolioHealth = async (): Promise<PortfolioHealth | null> => {
   const { data } = await api.get("/portfolio/health", { timeout: 120000 });
   if (data.code === 404) return null;
   if (data.code !== 200 || !data.data) throw new Error(data.message || "持仓体检失败");
+  return data.data;
+};
+
+/** 最近 days 天的每日快照，按日期升序；缺行情的日子没有记录。 */
+export const getPortfolioSnapshots = async (days = 180): Promise<PortfolioSnapshotPoint[]> => {
+  const { data } = await api.get("/portfolio/snapshots", { params: { days } });
+  if (data.code !== 200 || !data.data) throw new Error(data.message || "净值快照加载失败");
   return data.data;
 };

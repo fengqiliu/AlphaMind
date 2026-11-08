@@ -28,15 +28,17 @@ public class PortfolioService {
     private final ResilientMarketDataService marketData;
     private final ConcurrencyConfig.IoExecutor io;
     private final AnalysisHistoryService history;
+    private final PortfolioSnapshotRepository snapshots;
 
     public PortfolioService(PortfolioRepository repository, PersonalModelCatalog catalog,
                             ResilientMarketDataService marketData, ConcurrencyConfig.IoExecutor io,
-                            AnalysisHistoryService history) {
+                            AnalysisHistoryService history, PortfolioSnapshotRepository snapshots) {
         this.repository = repository;
         this.catalog = catalog;
         this.marketData = marketData;
         this.io = io;
         this.history = history;
+        this.snapshots = snapshots;
     }
 
     public Optional<PortfolioProfile> get() {
@@ -77,20 +79,38 @@ public class PortfolioService {
         var asset = catalog.asset(stockCode);
         var entity = repository.findById(PortfolioEntity.SINGLETON_ID);
         if (entity.isEmpty()) return Optional.empty();
-        var profile = entity.get().toProfile();
+        var stored = entity.get().toProfile();
+        var profile = withSnapshotPeak(stored);
         var budget = RiskBudgetCalculator.compute(profile, asset.code(), asset.theme(), plannedBuy,
                 quotes(profile.holdings()), OffsetDateTime.now(MARKET_ZONE));
-        if (budget.totalValue() != null && budget.peakValue() != null
-                && (profile.peakValue() == null || budget.peakValue() > profile.peakValue())) {
-            entity.get().setPeakValue(budget.peakValue());
+        // 只有这次计算出的总资产超过手填高点才回写；快照高点只参与计算，不改写用户填的数。
+        if (budget.totalValue() != null && stored.peakValue() != null && budget.totalValue() > stored.peakValue()) {
+            entity.get().setPeakValue(budget.totalValue());
             repository.save(entity.get());
         }
         return Optional.of(budget);
     }
 
+    /** 按当期行情给整个组合估值（拟买入 0）。任一市场定价持仓缺当期行情时 totalValue 为 null。 */
+    public RiskBudget valuation(PortfolioProfile profile) {
+        return RiskBudgetCalculator.compute(profile, null, null, 0, quotes(profile.holdings()),
+                OffsetDateTime.now(MARKET_ZONE));
+    }
+
+    /** 历史高点取手填值与每日快照最大值中较大的一个；两者都没有时保持原样。 */
+    private PortfolioProfile withSnapshotPeak(PortfolioProfile profile) {
+        Double snapshotPeak = snapshots.maxTotalValue();
+        if (snapshotPeak == null || snapshotPeak <= 0
+                || (profile.peakValue() != null && profile.peakValue() >= snapshotPeak)) {
+            return profile;
+        }
+        return new PortfolioProfile(profile.holdings(), profile.cash(), profile.lowVolatility(), snapshotPeak,
+                profile.updatedAt());
+    }
+
     /** 持仓体检（只读）：组合尚未录入时返回 empty。 */
     public Optional<PortfolioHealth> health() {
-        var profile = get();
+        var profile = get().map(this::withSnapshotPeak);
         if (profile.isEmpty()) return Optional.empty();
         var assets = catalog.definition().assets();
         LocalDate today = LocalDate.now(MARKET_ZONE);
