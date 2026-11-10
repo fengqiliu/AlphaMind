@@ -29,9 +29,10 @@ class PortfolioHealthCalculatorTest {
             asset("600036", "招商银行", "银行", "银行"),
             asset("517400", "黄金股ETF国泰", "黄金矿股ETF", "黄金相关资产"));
 
+    static final LocalDate LATER = TODAY.plusDays(30);
     static final Map<String, ReviewStatus> FRESH = Map.of(
-            "601138", new ReviewStatus(TODAY), "002475", new ReviewStatus(TODAY),
-            "600036", new ReviewStatus(TODAY), "517400", new ReviewStatus(TODAY));
+            "601138", new ReviewStatus(LATER), "002475", new ReviewStatus(LATER),
+            "600036", new ReviewStatus(LATER), "517400", new ReviewStatus(LATER));
 
     static List<Kind> kinds(PortfolioHealth health) {
         return health.findings().stream().map(PortfolioHealth.Finding::kind).toList();
@@ -107,5 +108,41 @@ class PortfolioHealthCalculatorTest {
 
         assertEquals(List.of(Kind.POSITION_LIMIT), kinds(health));
         assertEquals(5.0, health.findings().get(0).limit());
+    }
+
+    private static PortfolioHealth bankWithReviewUntil(LocalDate validUntil) {
+        var profile = new PortfolioProfile(List.of(new Holding("600036", "招商银行", "银行", 100.0, null)),
+                96_000.0, 0.0, null, NOW);
+        return PortfolioHealthCalculator.evaluate(profile, ASSETS, Map.of("600036", HoldingQuote.of(40, 50.0)),
+                Map.of("600036", new ReviewStatus(validUntil)), TODAY, NOW);
+    }
+
+    @Test
+    void expiringWithinSevenDaysIsFlaggedButEightIsNot() {
+        var seven = bankWithReviewUntil(TODAY.plusDays(7));
+        assertEquals(List.of(Kind.REVIEW_EXPIRING), kinds(seven));
+        assertEquals(7.0, seven.findings().get(0).value());
+        assertTrue(seven.findings().get(0).message().contains("还剩 7 天"));
+        assertEquals(List.of(), kinds(bankWithReviewUntil(TODAY.plusDays(8))));
+    }
+
+    @Test
+    void lastValidDayIsExpiringAndTheDayAfterIsExpired() {
+        var lastDay = bankWithReviewUntil(TODAY);
+        assertEquals(List.of(Kind.REVIEW_EXPIRING), kinds(lastDay), "到期当天证据仍有效，与复核引擎同一边界");
+        assertTrue(lastDay.findings().get(0).message().contains("今天是最后一天"));
+        assertEquals(List.of(Kind.REVIEW_EXPIRED), kinds(bankWithReviewUntil(TODAY.minusDays(1))), "已过期只报一条，不同时报即将过期");
+    }
+
+    @Test
+    void manualValueModelHoldingIsCheckedButNonModelStockIsNot() {
+        var profile = new PortfolioProfile(List.of(
+                new Holding("600036", "招商银行", "银行", null, 4_000.0),
+                new Holding("600519", "贵州茅台", "消费", 1.0, null)), 95_000.0, 0.0, null, NOW);
+        var health = PortfolioHealthCalculator.evaluate(profile, ASSETS, Map.of("600519", HoldingQuote.of(1000, 50.0)),
+                Map.of("600036", new ReviewStatus(TODAY.plusDays(3)), "600519", new ReviewStatus(TODAY.plusDays(3))), TODAY, NOW);
+
+        assertEquals(List.of(Kind.REVIEW_EXPIRING), kinds(health));
+        assertEquals("600036", health.findings().get(0).stockCode(), "模型外标的不做复核检查");
     }
 }

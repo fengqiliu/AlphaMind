@@ -50,7 +50,8 @@ export type HealthKind =
   | "DRAWDOWN"
   | "OVERHEATED"
   | "REVIEW_MISSING"
-  | "REVIEW_EXPIRED";
+  | "REVIEW_EXPIRED"
+  | "REVIEW_EXPIRING";
 
 export interface HealthFinding {
   kind: HealthKind;

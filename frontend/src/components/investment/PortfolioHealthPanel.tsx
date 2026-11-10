@@ -14,7 +14,11 @@ const KIND_LABELS: Record<HealthKind, string> = {
   OVERHEATED: "过热",
   REVIEW_MISSING: "未复核",
   REVIEW_EXPIRED: "证据过期",
+  REVIEW_EXPIRING: "证据即将过期",
 };
+
+/** 提前提示，不算越线：用中性色。 */
+const ADVISORY: ReadonlySet<HealthKind> = new Set(["REVIEW_EXPIRING"]);
 
 /**
  * 持仓体检：按模型已有参数检查已录入持仓，只提示需要复核的项，不给卖出价或减仓比例。
@@ -84,7 +88,7 @@ export function PortfolioHealthPanel({
         </Button>
       </div>
       <p className="text-xs leading-6 text-[var(--text-muted)]">
-        按模型已有参数检查已录入持仓：单标的控制线（成长科技 3%、其余 5%）、模型主题合计 20%、现金底线 15%、组合回撤 20%、日 RSI14 &gt; 70，以及证据是否过期。只提示复核，不给卖出价或减仓比例。
+        按模型已有参数检查已录入持仓：单标的控制线（成长科技 3%、其余 5%）、模型主题合计 20%、现金底线 15%、组合回撤 20%、日 RSI14 &gt; 70，以及证据是否过期或 7 天内到期。只提示复核，不给卖出价或减仓比例。
       </p>
       {error ? (
         <p role="alert" className="mt-3 rounded-xl bg-[var(--bearish-glow)] p-3 text-xs text-[var(--bearish)]">
@@ -121,7 +125,13 @@ export function PortfolioHealthPanel({
                 >
                   <div className="min-w-0 text-sm">
                     <p className="font-medium">
-                      <span className="mr-2 rounded bg-[var(--bearish-glow)] px-1.5 py-0.5 text-[10px] text-[var(--bearish)]">
+                      <span
+                        className={`mr-2 rounded px-1.5 py-0.5 text-[10px] ${
+                          ADVISORY.has(finding.kind)
+                            ? "bg-[var(--neutral-glow)] text-[var(--text-secondary)]"
+                            : "bg-[var(--bearish-glow)] text-[var(--bearish)]"
+                        }`}
+                      >
                         {KIND_LABELS[finding.kind]}
                       </span>
                       {finding.name}

@@ -16,6 +16,8 @@ import java.util.*;
 public final class PortfolioHealthCalculator {
     static final double THEME_LIMIT = 20, CASH_FLOOR = 15, DRAWDOWN_LIMIT = 20, OVERHEATED_RSI = 70;
     static final String GOLD_ETF = "黄金矿股ETF";
+    /** 证据有效期剩余不超过这么多天时提前提示；到期当天证据仍有效（与 PersonalModelEngine 同一边界）。 */
+    static final int EXPIRING_DAYS = 7;
 
     private PortfolioHealthCalculator() {}
 
@@ -105,6 +107,11 @@ public final class PortfolioHealthCalculator {
             return Optional.of(new PortfolioHealth.Finding(PortfolioHealth.Kind.REVIEW_EXPIRED, holding.stockCode(), holding.name(),
                     "最近一次复核的证据" + (review.validUntil() == null ? "未写有效期" : "已于 " + review.validUntil() + " 过期")
                             + "：持有逻辑需要重新确认", null, null));
+        long left = java.time.temporal.ChronoUnit.DAYS.between(today, review.validUntil());
+        if (left <= EXPIRING_DAYS)
+            return Optional.of(new PortfolioHealth.Finding(PortfolioHealth.Kind.REVIEW_EXPIRING, holding.stockCode(), holding.name(),
+                    "复核证据将于 " + review.validUntil() + " 过期" + (left == 0 ? "（今天是最后一天）" : "，还剩 " + left + " 天")
+                            + "：建议提前复核", (double) left, (double) EXPIRING_DAYS));
         return Optional.empty();
     }
 

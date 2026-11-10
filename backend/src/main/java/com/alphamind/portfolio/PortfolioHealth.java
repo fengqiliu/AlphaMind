@@ -10,7 +10,7 @@ import java.util.List;
 public record PortfolioHealth(Double totalValue, List<Finding> findings, List<String> unavailable,
                               OffsetDateTime checkedAt) {
 
-    public enum Kind { POSITION_LIMIT, THEME_LIMIT, CASH_FLOOR, DRAWDOWN, OVERHEATED, REVIEW_MISSING, REVIEW_EXPIRED }
+    public enum Kind { POSITION_LIMIT, THEME_LIMIT, CASH_FLOOR, DRAWDOWN, OVERHEATED, REVIEW_MISSING, REVIEW_EXPIRED, REVIEW_EXPIRING }
 
     /** 一条触发项；value/limit 为百分比或 RSI 数值，证据类为 null。stockCode 为空表示组合级或主题级。 */
     public record Finding(Kind kind, String stockCode, String name, String message, Double value, Double limit) {}
