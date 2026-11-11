@@ -64,4 +64,32 @@ class PersonalModelAnalysisServiceTest {
         assertEquals("PENDING", assessment.gates().stream().filter(g -> g.id().equals("VALUATION")).findFirst().orElseThrow().status());
         assertEquals("S1", assessment.level());
     }
+
+    /** 上海时间 2026-11-11 07:30（UTC 仍是 11-10）复核：容器默认 UTC 时也必须按上海日期判断复核日期与有效期。 */
+    @Test void reviewDatesAreJudgedOnTheShanghaiCalendarDayEvenWhenTheServerRunsInUtc() throws Exception {
+        var market = mock(ResilientMarketDataService.class); var history = mock(AnalysisHistoryService.class);
+        var catalog = new PersonalModelCatalog(new ObjectMapper());
+        var clock = Clock.fixed(Instant.parse("2026-11-10T23:30:00Z"), ZoneOffset.UTC);
+        var service = new PersonalModelAnalysisService(catalog, new PersonalModelEngine(), market, history,
+                new PersonalReviewReuseService(catalog, history), mock(FundamentalDataService.class), clock);
+        var quote = new MarketQuote("002352","顺丰控股",29.5,29.5,29.5,30,29,100,2950,LocalDateTime.now());
+        var snapshot = new MarketDataSnapshot("002352","顺丰控股",quote,List.of(new DailyKline(LocalDate.of(2026,11,10),29.5,29.5,29,30,100,2950,1)),"fixture","fixture",Instant.now());
+        when(market.fetch("002352","顺丰控股")).thenReturn(new MarketDataResolution(snapshot,MarketDataResolution.Status.LIVE,0,null));
+        var review = new PersonalModelReview();
+        review.setReviewedAt(LocalDate.of(2026, 11, 11));
+        review.setValidUntil(LocalDate.of(2026, 12, 11));
+        review.setEvidenceSource("2026 三季报");
+
+        var assessment = service.analyze("002352", review).getPersonalModel();
+
+        assertEquals(LocalDate.of(2026, 11, 11), assessment.assessedOn());
+        assertFalse(assessment.missingEvidence().contains("复核日期及未过期的证据有效期"), "当天（上海）填写的复核日期不应被当成未来日期");
+
+        var expired = new PersonalModelReview();
+        expired.setReviewedAt(LocalDate.of(2026, 10, 1));
+        expired.setValidUntil(LocalDate.of(2026, 11, 10));
+        expired.setEvidenceSource("2026 三季报");
+        assertTrue(service.analyze("002352", expired).getPersonalModel().missingEvidence().contains("复核日期及未过期的证据有效期"),
+                "上海时间已是 11-11，有效期到 11-10 的证据已过期");
+    }
 }

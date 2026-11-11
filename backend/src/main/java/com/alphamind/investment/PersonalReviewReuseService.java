@@ -49,7 +49,7 @@ public class PersonalReviewReuseService {
                 });
             }
             draft.setSpecialChecks(checks);
-            LocalDate today = LocalDate.now();
+            LocalDate today = LocalDate.now(PersonalModelAnalysisService.MARKET_ZONE);
             boolean expired = source.getReviewedAt() == null || source.getReviewedAt().isAfter(today)
                     || source.getValidUntil() == null || source.getValidUntil().isBefore(today)
                     || source.getValidUntil().isBefore(source.getReviewedAt());

@@ -45,7 +45,7 @@ public class PersonalInvestmentModelController {
         try { catalog.asset(stockCode); }
         catch (IllegalArgumentException failure) { return ApiResponse.error(400, failure.getMessage()); }
         return fundamentalData.fundamentals(stockCode)
-                .map(resolution -> ApiResponse.success(FundamentalsDTO.from(stockCode, resolution, LocalDate.now())))
+                .map(resolution -> ApiResponse.success(FundamentalsDTO.from(stockCode, resolution, LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")))))
                 .orElseGet(() -> ApiResponse.error(503, "财报/估值数据暂不可用（数据源失败或该证券无财报），请手工填写证据"));
     }
 
