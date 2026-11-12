@@ -5,9 +5,9 @@ import com.alphamind.investment.PersonalModelDefinition;
 import com.alphamind.investment.PriceZonesTest;
 import com.alphamind.market.provider.MarketQuote;
 import com.alphamind.market.service.MarketDataResolution;
-import com.alphamind.market.service.MarketDataSnapshot;
-import com.alphamind.market.service.ResilientMarketDataService;
-import com.alphamind.market.service.MarketDataUnavailableException;
+import com.alphamind.market.service.QuoteResolution;
+import com.alphamind.market.service.QuoteSnapshot;
+import com.alphamind.market.service.StockQuoteService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -20,7 +20,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 class PriceAlertServiceTest {
-    private final ResilientMarketDataService market = mock(ResilientMarketDataService.class);
+    private final StockQuoteService market = mock(StockQuoteService.class);
     private final PriceAlertRepository alerts = mock(PriceAlertRepository.class);
     private final PriceAlertStateRepository states = mock(PriceAlertStateRepository.class);
     private final Map<String, PriceAlertStateEntity> stateStore = new HashMap<>();
@@ -46,8 +46,8 @@ class PriceAlertServiceTest {
     private void price(double current, MarketDataResolution.Status status) {
         var quote = new MarketQuote("600036", "招商银行", current, current, current, current, current, 100, 100 * current,
                 LocalDateTime.of(2026, 11, 5, 10, 0));
-        var snapshot = new MarketDataSnapshot("600036", "招商银行", quote, List.of(), "fixture", "fixture", Instant.now());
-        when(market.fetch("600036", "招商银行")).thenReturn(new MarketDataResolution(snapshot, status, 0, null));
+        var snapshot = new QuoteSnapshot(quote, "fixture", Instant.now());
+        when(market.quotes(List.of("600036"))).thenReturn(Map.of("600036", new QuoteResolution(snapshot, status, 0)));
     }
 
     private List<String> run(double... prices) {
@@ -84,10 +84,19 @@ class PriceAlertServiceTest {
         assertEquals(List.of("600036"), stale.skippedStale());
         assertEquals(0, stale.checked());
 
-        when(market.fetch("600036", "招商银行")).thenThrow(new MarketDataUnavailableException("down"));
-        assertEquals(List.of("600036"), service.checkAll().failed());
+        when(market.quotes(List.of("600036"))).thenReturn(Map.of());
+        assertEquals(List.of("600036"), service.checkAll().failed(), "报价缺席记为取数失败");
+        when(market.quotes(List.of("600036"))).thenThrow(new IllegalStateException("cache down"));
+        assertEquals(List.of("600036"), service.checkAll().failed(), "批量取价异常不中断，全部记为失败");
         assertTrue(saved.isEmpty());
         assertTrue(stateStore.isEmpty(), "未取得当期价格时不更新档位状态");
+    }
+
+    @Test
+    void oneBatchQuoteCallPerRound() {
+        run(40, 38);
+        verify(market, times(2)).quotes(List.of("600036"));
+        verifyNoMoreInteractions(market);
     }
 
     @Test

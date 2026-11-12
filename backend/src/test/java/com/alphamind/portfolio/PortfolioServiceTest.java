@@ -6,7 +6,10 @@ import com.alphamind.investment.PersonalModelDefinition;
 import com.alphamind.market.provider.MarketQuote;
 import com.alphamind.market.service.MarketDataResolution;
 import com.alphamind.market.service.MarketDataSnapshot;
+import com.alphamind.market.service.QuoteResolution;
+import com.alphamind.market.service.QuoteSnapshot;
 import com.alphamind.market.service.ResilientMarketDataService;
+import com.alphamind.market.service.StockQuoteService;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +29,7 @@ class PortfolioServiceTest {
     private final PortfolioRepository repository = mock(PortfolioRepository.class);
     private final ResilientMarketDataService market = mock(ResilientMarketDataService.class);
     private final PortfolioSnapshotRepository snapshots = mock(PortfolioSnapshotRepository.class);
+    private final StockQuoteService quotes = mock(StockQuoteService.class);
     private final ConcurrencyConfig.IoExecutor io = new ConcurrencyConfig.IoExecutor(Executors.newFixedThreadPool(2));
     private PortfolioService service;
 
@@ -37,7 +41,7 @@ class PortfolioServiceTest {
         when(catalog.definition()).thenReturn(new PersonalModelDefinition("m", "n", "1.1", "d", "f", "s", "p", List.of(asset)));
         when(catalog.asset("600036")).thenReturn(asset);
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
-        service = new PortfolioService(repository, catalog, market, io, mock(com.alphamind.service.AnalysisHistoryService.class), snapshots);
+        service = new PortfolioService(repository, catalog, market, io, mock(com.alphamind.service.AnalysisHistoryService.class), snapshots, quotes);
     }
 
     @AfterEach
@@ -68,9 +72,8 @@ class PortfolioServiceTest {
                 List.of(new Holding("600036", "招商银行", "银行", 1000.0, null)), 10_000, 0, 15_000.0, null);
         when(repository.findById(PortfolioEntity.SINGLETON_ID)).thenReturn(Optional.of(entity));
         var quote = new MarketQuote("600036", "招商银行", 38, 38, 38, 38, 38, 1, 38, LocalDateTime.now());
-        when(market.fetch("600036", "招商银行")).thenReturn(new MarketDataResolution(
-                new MarketDataSnapshot("600036", "招商银行", quote, List.of(), "f", "f", Instant.now()),
-                MarketDataResolution.Status.LIVE, 0, null));
+        when(quotes.quotes(List.of("600036"))).thenReturn(Map.of("600036",
+                new QuoteResolution(new QuoteSnapshot(quote, "f", Instant.now()), MarketDataResolution.Status.LIVE, 0)));
 
         var budget = service.riskBudget("600036", 2_000).orElseThrow();
 
@@ -86,9 +89,8 @@ class PortfolioServiceTest {
                 List.of(new Holding("600036", "招商银行", "银行", 1000.0, null)), 10_000, 0, 15_000.0, null);
         when(repository.findById(PortfolioEntity.SINGLETON_ID)).thenReturn(Optional.of(entity));
         var quote = new MarketQuote("600036", "招商银行", 38, 38, 38, 38, 38, 1, 38, LocalDateTime.now());
-        when(market.fetch("600036", "招商银行")).thenReturn(new MarketDataResolution(
-                new MarketDataSnapshot("600036", "招商银行", quote, List.of(), "f", "f", Instant.now()),
-                MarketDataResolution.Status.STALE_CACHE, 900, "w"));
+        when(quotes.quotes(List.of("600036"))).thenReturn(Map.of("600036",
+                new QuoteResolution(new QuoteSnapshot(quote, "f", Instant.now()), MarketDataResolution.Status.STALE_CACHE, 900)));
 
         var budget = service.riskBudget("600036", 0).orElseThrow();
 
@@ -99,9 +101,8 @@ class PortfolioServiceTest {
 
     private void liveQuoteAt38() {
         var quote = new MarketQuote("600036", "招商银行", 38, 38, 38, 38, 38, 1, 38, LocalDateTime.now());
-        when(market.fetch("600036", "招商银行")).thenReturn(new MarketDataResolution(
-                new MarketDataSnapshot("600036", "招商银行", quote, List.of(), "f", "f", Instant.now()),
-                MarketDataResolution.Status.LIVE, 0, null));
+        when(quotes.quotes(List.of("600036"))).thenReturn(Map.of("600036",
+                new QuoteResolution(new QuoteSnapshot(quote, "f", Instant.now()), MarketDataResolution.Status.LIVE, 0)));
     }
 
     @Test
@@ -147,14 +148,33 @@ class PortfolioServiceTest {
     @Test
     void valuationIsWithheldWhenAHoldingHasOnlyStaleCache() {
         var quote = new MarketQuote("600036", "招商银行", 38, 38, 38, 38, 38, 1, 38, LocalDateTime.now());
-        when(market.fetch("600036", "招商银行")).thenReturn(new MarketDataResolution(
-                new MarketDataSnapshot("600036", "招商银行", quote, List.of(), "f", "f", Instant.now()),
-                MarketDataResolution.Status.STALE_CACHE, 900, "w"));
+        when(quotes.quotes(List.of("600036"))).thenReturn(Map.of("600036",
+                new QuoteResolution(new QuoteSnapshot(quote, "f", Instant.now()), MarketDataResolution.Status.STALE_CACHE, 900)));
 
         var valuation = service.valuation(input(null, new Holding("600036", "招商银行", "银行", 1000.0, null)));
 
         assertNull(valuation.totalValue());
         assertFalse(valuation.problems().isEmpty());
+    }
+
+    @Test
+    void valuationNeedsOnlyTheQuoteNotDailyBars() {
+        liveQuoteAt38();
+
+        var valuation = service.valuation(input(null, new Holding("600036", "招商银行", "银行", 1000.0, null)));
+
+        assertEquals(48_000.0, valuation.totalValue(), "日 K 不参与估值，K 线源故障时仍能算出总资产");
+        verifyNoInteractions(market);
+    }
+
+    @Test
+    void holdingMissingFromTheBatchWithholdsTheValuation() {
+        when(quotes.quotes(List.of("600036"))).thenReturn(Map.of());
+
+        var valuation = service.valuation(input(null, new Holding("600036", "招商银行", "银行", 1000.0, null)));
+
+        assertNull(valuation.totalValue());
+        assertTrue(valuation.problems().get(0).contains("行情取数失败"));
     }
 
     @Test

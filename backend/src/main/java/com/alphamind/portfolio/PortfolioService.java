@@ -7,6 +7,8 @@ import com.alphamind.market.service.MarketDataMapper;
 import com.alphamind.service.AnalysisHistoryService;
 import com.alphamind.market.service.MarketDataResolution;
 import com.alphamind.market.service.ResilientMarketDataService;
+import com.alphamind.market.service.QuoteResolution;
+import com.alphamind.market.service.StockQuoteService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,16 +31,19 @@ public class PortfolioService {
     private final ConcurrencyConfig.IoExecutor io;
     private final AnalysisHistoryService history;
     private final PortfolioSnapshotRepository snapshots;
+    private final StockQuoteService quoteService;
 
     public PortfolioService(PortfolioRepository repository, PersonalModelCatalog catalog,
                             ResilientMarketDataService marketData, ConcurrencyConfig.IoExecutor io,
-                            AnalysisHistoryService history, PortfolioSnapshotRepository snapshots) {
+                            AnalysisHistoryService history, PortfolioSnapshotRepository snapshots,
+                            StockQuoteService quoteService) {
         this.repository = repository;
         this.catalog = catalog;
         this.marketData = marketData;
         this.io = io;
         this.history = history;
         this.snapshots = snapshots;
+        this.quoteService = quoteService;
     }
 
     public Optional<PortfolioProfile> get() {
@@ -156,27 +161,27 @@ public class PortfolioService {
         }
     }
 
+    /**
+     * 组合估值只需要价格：一次批量取全部持仓的报价，不拉日 K，日 K 源故障或新股 K 线不足时不影响估值。
+     * 过期缓存与缺席的持仓都记为不可用，由计算器整组扣住百分比。
+     */
     private Map<String, RiskBudgetCalculator.Quote> quotes(List<Holding> holdings) {
-        Map<String, CompletableFuture<RiskBudgetCalculator.Quote>> futures = new LinkedHashMap<>();
-        for (Holding holding : holdings) {
-            if (!holding.pricedByMarket()) continue;
-            futures.put(holding.stockCode(), CompletableFuture.supplyAsync(() -> quote(holding), io.executor()));
+        List<String> codes = holdings.stream().filter(Holding::pricedByMarket).map(Holding::stockCode).distinct().toList();
+        if (codes.isEmpty()) return Map.of();
+        Map<String, QuoteResolution> resolved;
+        try {
+            resolved = quoteService.quotes(codes);
+        } catch (RuntimeException e) {
+            log.warn("组合估值批量取价失败: codes={}, reason={}", codes, e.getMessage());
+            resolved = Map.of();
         }
         Map<String, RiskBudgetCalculator.Quote> result = new HashMap<>();
-        futures.forEach((code, future) -> result.put(code, future.join()));
-        return result;
-    }
-
-    private RiskBudgetCalculator.Quote quote(Holding holding) {
-        try {
-            MarketDataResolution resolution = marketData.fetch(holding.stockCode(), holding.name());
-            if (resolution.status() == MarketDataResolution.Status.STALE_CACHE) {
-                return RiskBudgetCalculator.Quote.failed("实时行情不可用，只有过期缓存");
-            }
-            return RiskBudgetCalculator.Quote.of(resolution.snapshot().quote().current(), resolution.status().name());
-        } catch (RuntimeException e) {
-            log.warn("组合估值取数失败: stockCode={}, reason={}", holding.stockCode(), e.getMessage());
-            return RiskBudgetCalculator.Quote.failed("行情取数失败");
+        for (String code : codes) {
+            QuoteResolution resolution = resolved.get(code);
+            if (resolution == null) result.put(code, RiskBudgetCalculator.Quote.failed("行情取数失败"));
+            else if (resolution.stale()) result.put(code, RiskBudgetCalculator.Quote.failed("实时行情不可用，只有过期缓存"));
+            else result.put(code, RiskBudgetCalculator.Quote.of(resolution.snapshot().quote().current(), resolution.status().name()));
         }
+        return result;
     }
 }

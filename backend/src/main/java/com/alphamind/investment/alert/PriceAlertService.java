@@ -3,8 +3,9 @@ package com.alphamind.investment.alert;
 import com.alphamind.investment.PersonalModelCatalog;
 import com.alphamind.investment.PersonalModelDefinition;
 import com.alphamind.investment.PriceZones;
-import com.alphamind.market.service.MarketDataResolution;
-import com.alphamind.market.service.ResilientMarketDataService;
+import com.alphamind.market.service.QuoteResolution;
+import com.alphamind.market.service.QuoteSnapshot;
+import com.alphamind.market.service.StockQuoteService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -14,12 +15,14 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
  * 逐个检查个人模型观察标的的价格档位，价格首次进入更深的档位时写一条提醒。
  *
  * <p>只用实时行情或新鲜缓存；过期缓存不触发提醒，避免把旧价格当成当前价格。
+ * 档位判断只需要价格，因此每轮一次批量取 13 个标的的报价，不拉日 K。
  * 提醒只表示"该去复核了"，买入与否仍由复核时的全部决策门决定。
  */
 @Slf4j
@@ -28,21 +31,21 @@ public class PriceAlertService {
     static final ZoneId MARKET_ZONE = ZoneId.of("Asia/Shanghai");
 
     private final PersonalModelCatalog catalog;
-    private final ResilientMarketDataService marketData;
+    private final StockQuoteService quotes;
     private final PriceAlertRepository alerts;
     private final PriceAlertStateRepository states;
     private final Clock clock;
 
     @Autowired
-    public PriceAlertService(PersonalModelCatalog catalog, ResilientMarketDataService marketData,
+    public PriceAlertService(PersonalModelCatalog catalog, StockQuoteService quotes,
                              PriceAlertRepository alerts, PriceAlertStateRepository states) {
-        this(catalog, marketData, alerts, states, Clock.system(MARKET_ZONE));
+        this(catalog, quotes, alerts, states, Clock.system(MARKET_ZONE));
     }
 
-    PriceAlertService(PersonalModelCatalog catalog, ResilientMarketDataService marketData,
+    PriceAlertService(PersonalModelCatalog catalog, StockQuoteService quotes,
                       PriceAlertRepository alerts, PriceAlertStateRepository states, Clock clock) {
         this.catalog = catalog;
-        this.marketData = marketData;
+        this.quotes = quotes;
         this.alerts = alerts;
         this.states = states;
         this.clock = clock;
@@ -67,21 +70,25 @@ public class PriceAlertService {
         var model = catalog.definition();
         int checked = 0, created = 0;
         List<String> stale = new ArrayList<>(), failed = new ArrayList<>();
+        Map<String, QuoteResolution> resolved;
+        try {
+            resolved = quotes.quotes(model.assets().stream().map(PersonalModelDefinition.Asset::code).toList());
+        } catch (RuntimeException e) {
+            log.warn("价格提醒批量取价失败: reason={}", e.getMessage());
+            resolved = Map.of();
+        }
         for (var asset : model.assets()) {
-            MarketDataResolution resolution;
-            try {
-                resolution = marketData.fetch(asset.code(), asset.name());
-            } catch (RuntimeException e) {
-                log.warn("价格提醒取数失败: stockCode={}, reason={}", asset.code(), e.getMessage());
+            QuoteResolution resolution = resolved.get(asset.code());
+            if (resolution == null) {
                 failed.add(asset.code());
                 continue;
             }
-            if (resolution.status() == MarketDataResolution.Status.STALE_CACHE) {
+            if (resolution.stale()) {
                 stale.add(asset.code());
                 continue;
             }
             try {
-                if (check(model, asset, resolution).isPresent()) created++;
+                if (check(model, asset, resolution.snapshot()).isPresent()) created++;
                 checked++;
             } catch (RuntimeException e) {
                 log.warn("价格提醒写入失败: stockCode={}", asset.code(), e);
@@ -92,8 +99,8 @@ public class PriceAlertService {
     }
 
     private Optional<PriceAlertEntity> check(PersonalModelDefinition model, PersonalModelDefinition.Asset asset,
-                                             MarketDataResolution resolution) {
-        var quote = resolution.snapshot().quote();
+                                             QuoteSnapshot snapshot) {
+        var quote = snapshot.quote();
         double price = quote.current();
         var zone = PriceZones.classify(asset, price);
         if (PriceZones.UNKNOWN.equals(zone.name())) return Optional.empty();
