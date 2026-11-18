@@ -5,7 +5,6 @@ import type {
   WeeklyStockRecommendation,
   WatchlistItem,
   AnalysisReport,
-  ChatMessage,
 } from "@/types";
 
 const api = axios.create({
@@ -99,15 +98,6 @@ export const createChatSession = async (
 
 export const clearChatSession = async (sessionId: string): Promise<void> => {
   await api.delete(`/chat/session/${encodeURIComponent(sessionId)}`);
-};
-
-export const getChatMessages = async (
-  sessionId: string,
-): Promise<ChatMessage[]> => {
-  const { data } = await api.get(
-    `/chat/history/${encodeURIComponent(sessionId)}`,
-  );
-  return data.data;
 };
 
 export default api;

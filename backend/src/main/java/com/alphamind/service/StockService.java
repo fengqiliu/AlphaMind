@@ -126,7 +126,7 @@ public class StockService {
                         Collectors.averagingDouble(PricedStock::price)
                 ));
 
-        String weekLabel = buildWeekLabel(LocalDate.now());
+        String weekLabel = buildWeekLabel(LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")));
         List<WeeklyStockRecommendation> ranked = priced.stream()
                 .map(stock -> buildWeeklyRecommendation(stock, minPrice, maxPrice, industryAveragePrice, weekLabel))
                 .sorted(Comparator.comparing(WeeklyStockRecommendation::getCompositeScore).reversed())
