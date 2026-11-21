@@ -1,5 +1,6 @@
 import api from "@/api/client";
 import type {
+  HealthAlert,
   PortfolioHealth,
   PortfolioProfile,
   PortfolioSnapshotPoint,
@@ -46,4 +47,16 @@ export const getPortfolioSnapshots = async (days = 180): Promise<PortfolioSnapsh
   const { data } = await api.get("/portfolio/snapshots", { params: { days } });
   if (data.code !== 200 || !data.data) throw new Error(data.message || "净值快照加载失败");
   return data.data;
+};
+
+/** 每日体检产生的未读提醒。 */
+export const getHealthAlerts = async (): Promise<HealthAlert[]> => {
+  const { data } = await api.get("/portfolio/health/alerts");
+  if (data.code !== 200) throw new Error(data.message || "体检提醒加载失败");
+  return data.data ?? [];
+};
+
+export const acknowledgeHealthAlert = async (id: number): Promise<void> => {
+  const { data } = await api.post(`/portfolio/health/alerts/${id}/ack`);
+  if (data.code !== 200) throw new Error(data.message || "标记已读失败");
 };

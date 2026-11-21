@@ -67,6 +67,8 @@ export interface PortfolioHealth {
   totalValue: number | null;
   findings: HealthFinding[];
   unavailable: string[];
+  /** 缺当期行情的持仓代码。 */
+  unavailableCodes: string[];
   checkedAt: string;
 }
 
@@ -77,4 +79,17 @@ export interface PortfolioSnapshotPoint {
   cashRatioPct: number;
   holdingsCount: number;
   drawdownPct: number;
+}
+
+/** 每日体检中新出现的越线项；只在首次出现时记一条。 */
+export interface HealthAlert {
+  id: number;
+  kind: HealthKind;
+  stockCode: string | null;
+  name: string;
+  message: string;
+  value: number | null;
+  limitValue: number | null;
+  triggeredAt: string;
+  acknowledgedAt: string | null;
 }

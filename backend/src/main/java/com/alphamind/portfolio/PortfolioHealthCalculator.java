@@ -42,7 +42,7 @@ public final class PortfolioHealthCalculator {
         for (var asset : assets) { model.put(asset.code(), asset); modelThemes.add(asset.theme()); }
 
         List<PortfolioHealth.Finding> findings = new ArrayList<>();
-        List<String> unavailable = new ArrayList<>();
+        List<String> unavailable = new ArrayList<>(), unavailableCodes = new ArrayList<>();
         List<Map.Entry<Holding, Double>> values = new ArrayList<>();
         boolean complete = true;
 
@@ -51,6 +51,7 @@ public final class PortfolioHealthCalculator {
             if (holding.pricedByMarket()) {
                 var quote = quotes.get(holding.stockCode());
                 if (quote == null || quote.problem() != null || quote.price() == null) {
+                    unavailableCodes.add(holding.stockCode());
                     unavailable.add(holding.name() + "（" + holding.stockCode() + "）："
                             + (quote == null || quote.problem() == null ? "行情不可用" : quote.problem()));
                     complete = false;
@@ -67,11 +68,11 @@ public final class PortfolioHealthCalculator {
             if (asset != null) reviewFinding(holding, reviews.get(holding.stockCode()), today).ifPresent(findings::add);
         }
 
-        if (!complete) return new PortfolioHealth(null, List.copyOf(findings), List.copyOf(unavailable), now);
+        if (!complete) return new PortfolioHealth(null, List.copyOf(findings), List.copyOf(unavailable), List.copyOf(unavailableCodes), now);
 
         double liquid = profile.cash() + profile.lowVolatility();
         double total = values.stream().mapToDouble(Map.Entry::getValue).sum() + liquid;
-        if (total <= 0) return new PortfolioHealth(0.0, List.copyOf(findings), List.copyOf(unavailable), now);
+        if (total <= 0) return new PortfolioHealth(0.0, List.copyOf(findings), List.copyOf(unavailable), List.copyOf(unavailableCodes), now);
 
         Map<String, Double> themes = new LinkedHashMap<>();
         for (var entry : values) {
@@ -97,7 +98,7 @@ public final class PortfolioHealthCalculator {
             if (drawdown > DRAWDOWN_LIMIT) findings.add(new PortfolioHealth.Finding(PortfolioHealth.Kind.DRAWDOWN, null, "组合",
                     "组合回撤 " + drawdown + "% 超过 " + DRAWDOWN_LIMIT + "%：复核风险预算", drawdown, DRAWDOWN_LIMIT));
         }
-        return new PortfolioHealth(Math.round(total * 100) / 100.0, List.copyOf(findings), List.copyOf(unavailable), now);
+        return new PortfolioHealth(Math.round(total * 100) / 100.0, List.copyOf(findings), List.copyOf(unavailable), List.copyOf(unavailableCodes), now);
     }
 
     private static Optional<PortfolioHealth.Finding> reviewFinding(Holding holding, ReviewStatus review, LocalDate today) {

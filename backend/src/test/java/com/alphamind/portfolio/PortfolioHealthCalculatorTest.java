@@ -96,6 +96,7 @@ class PortfolioHealthCalculatorTest {
 
         assertNull(health.totalValue());
         assertEquals(List.of("工业富联（601138）：实时行情不可用，只有过期缓存"), health.unavailable());
+        assertEquals(List.of("601138"), health.unavailableCodes());
         assertEquals(List.of(Kind.REVIEW_MISSING, Kind.OVERHEATED, Kind.REVIEW_EXPIRED), kinds(health));
     }
 

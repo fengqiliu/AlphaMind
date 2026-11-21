@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, RefreshCw, Stethoscope } from "lucide-react";
+import { BellRing, Check, Loader2, RefreshCw, Stethoscope } from "lucide-react";
 import { Button } from "@/components/common/Button";
-import { getPortfolioHealth } from "@/api/portfolio";
-import type { HealthKind, PortfolioHealth } from "@/types/portfolio";
+import { acknowledgeHealthAlert, getHealthAlerts, getPortfolioHealth } from "@/api/portfolio";
+import type { HealthAlert, HealthKind, PortfolioHealth } from "@/types/portfolio";
 
 const KIND_LABELS: Record<HealthKind, string> = {
   POSITION_LIMIT: "单标的超线",
@@ -19,6 +19,103 @@ const KIND_LABELS: Record<HealthKind, string> = {
 
 /** 提前提示，不算越线：用中性色。 */
 const ADVISORY: ReadonlySet<HealthKind> = new Set(["REVIEW_EXPIRING"]);
+
+const formatTime = (value: string) =>
+  new Date(value).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+/** 每日收盘后自动体检产生的新提醒：某项首次越线时记一条，持续越线不重复。 */
+function HealthAlertList({
+  assetCodes,
+  onReview,
+}: {
+  assetCodes: string[];
+  onReview: (stockCode: string) => void;
+}) {
+  const [alerts, setAlerts] = useState<HealthAlert[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getHealthAlerts()
+      .then((items) => {
+        if (!cancelled) setAlerts(items);
+      })
+      .catch((failure) => {
+        if (!cancelled) setError(failure instanceof Error ? failure.message : "体检提醒加载失败");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const acknowledge = async (id: number) => {
+    setError(null);
+    try {
+      await acknowledgeHealthAlert(id);
+      setAlerts((previous) => previous?.filter((item) => item.id !== id) ?? null);
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "标记已读失败");
+    }
+  };
+
+  if (error)
+    return (
+      <p role="alert" className="mt-3 rounded-xl bg-[var(--bearish-glow)] p-3 text-xs text-[var(--bearish)]">
+        {error}
+      </p>
+    );
+  if (!alerts || alerts.length === 0) return null;
+  return (
+    <div className="mt-3 rounded-xl border border-[var(--border)] p-3">
+      <p className="flex items-center gap-2 text-xs font-medium">
+        <BellRing className="size-3.5 text-[var(--accent)]" />
+        每日体检新提醒
+        <span className="rounded-full bg-[var(--accent)] px-2 py-0.5 text-[10px] text-white">{alerts.length} 条未读</span>
+      </p>
+      <ul className="mt-2 divide-y divide-[var(--border)]">
+        {alerts.map((alert) => (
+          <li key={alert.id} className="flex flex-wrap items-center justify-between gap-3 py-2">
+            <div className="min-w-0 text-sm">
+              <p className="font-medium">
+                <span className="mr-2 text-[10px] text-[var(--text-muted)]">{KIND_LABELS[alert.kind] ?? alert.kind}</span>
+                {alert.name}
+                {alert.stockCode && (
+                  <span className="ml-2 font-mono text-xs text-[var(--text-muted)]">{alert.stockCode}</span>
+                )}
+              </p>
+              <p className="mt-1 text-xs text-[var(--text-secondary)]">
+                {alert.message}
+                <span className="ml-2 text-[var(--text-muted)]">{formatTime(alert.triggeredAt)}</span>
+              </p>
+            </div>
+            <div className="flex gap-2">
+              {alert.stockCode && assetCodes.includes(alert.stockCode) && (
+                <Button type="button" size="sm" onClick={() => onReview(alert.stockCode!)}>
+                  去复核
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-label={`将 ${alert.name} 的体检提醒标为已读`}
+                onClick={() => void acknowledge(alert.id)}
+              >
+                <Check className="size-3.5" />
+                已读
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 /**
  * 持仓体检：按模型已有参数检查已录入持仓，只提示需要复核的项，不给卖出价或减仓比例。
@@ -88,8 +185,9 @@ export function PortfolioHealthPanel({
         </Button>
       </div>
       <p className="text-xs leading-6 text-[var(--text-muted)]">
-        按模型已有参数检查已录入持仓：单标的控制线（成长科技 3%、其余 5%）、模型主题合计 20%、现金底线 15%、组合回撤 20%、日 RSI14 &gt; 70，以及证据是否过期或 7 天内到期。只提示复核，不给卖出价或减仓比例。
+        按模型已有参数检查已录入持仓：单标的控制线（成长科技 3%、其余 5%）、模型主题合计 20%、现金底线 15%、组合回撤 20%、日 RSI14 &gt; 70，以及证据是否过期或 7 天内到期。只提示复核，不给卖出价或减仓比例。工作日 15:40 自动体检一次，新出现的越线项会留下提醒。
       </p>
+      <HealthAlertList assetCodes={assetCodes} onReview={onReview} />
       {error ? (
         <p role="alert" className="mt-3 rounded-xl bg-[var(--bearish-glow)] p-3 text-xs text-[var(--bearish)]">
           {error}

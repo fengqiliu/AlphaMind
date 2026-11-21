@@ -6,9 +6,10 @@ import java.util.List;
 /**
  * 持仓体检结果：只提示需要复核的持仓，不给卖出价或减仓比例。
  * {@code totalValue} 为 null 表示有持仓缺当期行情，组合层面的权重检查未执行。
+ * {@code unavailableCodes} 是缺当期行情的持仓代码：这些持仓的过热项本轮“未知”，不等于“已恢复”。
  */
 public record PortfolioHealth(Double totalValue, List<Finding> findings, List<String> unavailable,
-                              OffsetDateTime checkedAt) {
+                              List<String> unavailableCodes, OffsetDateTime checkedAt) {
 
     public enum Kind { POSITION_LIMIT, THEME_LIMIT, CASH_FLOOR, DRAWDOWN, OVERHEATED, REVIEW_MISSING, REVIEW_EXPIRED, REVIEW_EXPIRING }
 
